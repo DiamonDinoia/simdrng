@@ -10,23 +10,25 @@
 #include <xsimd/xsimd.hpp>
 
 #include "random/macros.hpp"
-#include "xsimd/types/xsimd_api.hpp"
 
 namespace prng {
 
-template <std::uint8_t R, class Arch>
+// Forward declare ChaChaSIMDCreator for dynamic dispatch help
+namespace internal {
+  template <std::uint8_t R>
+  struct ChaChaSIMDCreator;
+}
+
+template <std::uint8_t R = 20>
 class ChaChaSIMD {
-protected:
+public:
   static constexpr auto MATRIX_WORDCOUNT = std::uint8_t{16};
   static constexpr auto KEY_WORDCOUNT = std::uint8_t{8};
 
-public:
   using result_type = std::uint64_t;
   using input_word = std::uint64_t;
   using matrix_word = std::uint32_t;
   using matrix_type = std::array<matrix_word, MATRIX_WORDCOUNT>;
-  using simd_type = xsimd::batch<matrix_word, Arch>;
-  using working_state_type = std::array<simd_type, MATRIX_WORDCOUNT>;
   using result_cache_type = std::array<result_type, MATRIX_WORDCOUNT / 2>;
 
   static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept {
@@ -36,6 +38,134 @@ public:
   static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept {
     return (std::numeric_limits<result_type>::max)();
   }
+
+  static constexpr PRNG_ALWAYS_INLINE matrix_type results_to_block(const result_cache_type& results) noexcept {
+#if __cplusplus >= 202002L
+    return std::bit_cast<matrix_type>(results);
+#else
+    matrix_type block{};
+    for (auto i = std::size_t{0}; i < results.size(); ++i) {
+      block[2 * i] = static_cast<matrix_word>(results[i] & 0xFFFFFFFF);
+      block[2 * i + 1] = static_cast<matrix_word>(results[i] >> 32);
+    }
+    return block;
+#endif
+  }
+
+  static constexpr PRNG_ALWAYS_INLINE result_cache_type block_to_results(const matrix_type& block) noexcept {
+#if __cplusplus >= 202002L
+    return std::bit_cast<result_cache_type>(block);
+#else
+    result_cache_type results{};
+    for (auto i = std::size_t{0}; i < results.size(); ++i) {
+      results[i] =
+        static_cast<result_type>(block[2 * i]) |
+        (static_cast<result_type>(block[2 * i + 1]) << 32);
+    }
+    return results;
+#endif
+  }
+
+  /**
+   * @brief Construct a SIMD ChaCha generator with given key, counter and nonce
+   * @param key A 256-bit key, divided up into eight 32-bit words.
+   * @param counter Initial value of the counter.
+   * @param nonce Initial value of the nonce.
+   */
+  explicit PRNG_ALWAYS_INLINE ChaChaSIMD(
+    const std::array<matrix_word, KEY_WORDCOUNT> key,
+    const input_word counter,
+    const input_word nonce
+  ) {
+    // TODO: Make sure you properly initalize the implementation's state with these!
+    pImpl = xsimd::dispatch<xsimd::arch_list<xsimd::default_arch>>(internal::ChaChaSIMDCreator<R>{key, counter, nonce})();
+  }
+
+  /**
+   * @brief Generates the next 64-bit output.
+   * @return The next 64-bit output.
+   */
+  PRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
+    if (m_result_index >= m_result_cache.size()) [[unlikely]] {
+      m_result_cache = block_to_results(pImpl->next_block());
+      m_result_index = 0;
+    }
+    return m_result_cache[m_result_index++];
+  }
+  
+  /**
+   * @brief Generates a uniform random number in the range [0, 1).
+   * @return A uniform random number.
+   */
+  PRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
+    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
+  }
+
+  // TODO: block()
+  // if we're not at the end of the result cache, should return the whole result cache
+  // as matrix_type and then set the result cache index past the end to invalidate it.
+  // Otherwise it should return the next block. Means in the implementation we can return
+  // just the next block, which leaves just a 'return next_block' call, so we can cut it in the implementation
+  /**
+   * @brief Generates the next 64-byte ChaCha block.
+   * @return The next 64-byte ChaCha block.
+   */
+  PRNG_ALWAYS_INLINE constexpr matrix_type block() noexcept {
+    if (m_result_index < m_result_cache.size()) {
+      auto cached_block = results_to_block(m_result_cache);
+      m_result_index = static_cast<std::uint8_t>(m_result_cache.size()); // Mark result cache as exhausted
+      return cached_block;
+    }
+    return pImpl->next_block();
+  }
+
+  // TODO: getState() will likely need direct access to impl for this
+  // /**
+  //  * @brief Returns the state of the generator; a 4x4 matrix.
+  //  * @return State of the generator.
+  //  */
+  // PRNG_ALWAYS_INLINE constexpr matrix_type getState() const noexcept {
+  //   matrix_type state = m_state;
+  //   if (m_cache_index < CACHE_BLOCKCOUNT || m_result_index < m_result_cache.size()) {
+  //     input_word counter = (static_cast<input_word>(state[13]) << 32) | static_cast<input_word>(state[12]);
+  //     counter -= static_cast<input_word>(CACHE_BLOCKCOUNT - m_cache_index);
+  //     if (m_result_index < m_result_cache.size()) {
+  //       --counter;
+  //     }
+  //     state[12] = static_cast<matrix_word>(counter & 0xFFFFFFFF);
+  //     state[13] = static_cast<matrix_word>(counter >> 32);
+  //   }
+  //   return state;
+  // }
+
+  struct IChaChaSIMD {
+    virtual ~IChaChaSIMD() = default;
+    virtual matrix_type next_block() = 0;
+  };
+
+private:
+  std::unique_ptr<IChaChaSIMD> pImpl;
+
+  result_cache_type m_result_cache {};
+  // Initialize to "past end of the cache" since cache starts empty.
+  std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
+};
+
+
+namespace internal {
+
+template <class Arch, std::uint8_t R>
+class ChaChaSIMDImpl : public ChaChaSIMD<>::IChaChaSIMD {
+protected:
+  static constexpr auto MATRIX_WORDCOUNT = std::uint8_t{16};
+  static constexpr auto KEY_WORDCOUNT = std::uint8_t{8};
+
+public:
+  using input_word = ChaChaSIMD<>::input_word;
+  using matrix_word = ChaChaSIMD<>::matrix_word;
+  using matrix_type = ChaChaSIMD<>::matrix_type;
+  using simd_type = xsimd::batch<matrix_word, Arch>;
+  using working_state_type = std::array<simd_type, MATRIX_WORDCOUNT>;
 
 protected:
   static constexpr std::uint8_t SIMD_WIDTH = std::uint8_t{simd_type::size};
@@ -92,7 +222,7 @@ public:
    * @param counter Initial value of the counter.
    * @param nonce Initial value of the nonce.
    */
-  explicit PRNG_ALWAYS_INLINE ChaChaSIMD(
+  explicit PRNG_ALWAYS_INLINE ChaChaSIMDImpl(
     const std::array<matrix_word, KEY_WORDCOUNT> key,
     const input_word counter,
     const input_word nonce
@@ -114,64 +244,28 @@ public:
     m_state[14] = static_cast<matrix_word>(nonce & 0xFFFFFFFF);
     m_state[15] = static_cast<matrix_word>(nonce >> 32);
   }
-
-  /**
-   * @brief Generates the next 64-bit output.
-   * @return The next 64-bit output.
-   */
-  PRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
-    if (m_result_index >= m_result_cache.size()) [[unlikely]] {
-      m_result_cache = block_to_results(next_block());
-      m_result_index = 0;
-    }
-    return m_result_cache[m_result_index++];
-  }
-
-  /**
-   * @brief Generates a uniform random number in the range [0, 1).
-   * @return A uniform random number.
-   */
-  PRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
-    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
-  }
-
-  /**
-   * @brief Generates the next 64-byte ChaCha block.
-   * @return The next 64-byte ChaCha block.
-   */
-  PRNG_ALWAYS_INLINE constexpr matrix_type block() noexcept {
-    if (m_result_index < m_result_cache.size()) {
-      auto cached_block = results_to_block(m_result_cache);
-      m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
-      return cached_block;
-    }
-    return next_block();
-  }
-
-  /**
-   * @brief Returns the state of the generator; a 4x4 matrix.
-   * @return State of the generator.
-   */
-  PRNG_ALWAYS_INLINE constexpr matrix_type getState() const noexcept {
-    matrix_type state = m_state;
-    if (m_cache_index < CACHE_BLOCKCOUNT || m_result_index < m_result_cache.size()) {
-      input_word counter = (static_cast<input_word>(state[13]) << 32) | static_cast<input_word>(state[12]);
-      counter -= static_cast<input_word>(CACHE_BLOCKCOUNT - m_cache_index);
-      if (m_result_index < m_result_cache.size()) {
-        --counter;
-      }
-      state[12] = static_cast<matrix_word>(counter & 0xFFFFFFFF);
-      state[13] = static_cast<matrix_word>(counter >> 32);
-    }
-    return state;
-  }
+  // /**
+  //  * @brief Returns the state of the generator; a 4x4 matrix.
+  //  * @return State of the generator.
+  //  */
+  // PRNG_ALWAYS_INLINE constexpr matrix_type getState() const noexcept {
+  //   matrix_type state = m_state;
+  //   if (m_cache_index < CACHE_BLOCKCOUNT || m_result_index < m_result_cache.size()) {
+  //     input_word counter = (static_cast<input_word>(state[13]) << 32) | static_cast<input_word>(state[12]);
+  //     counter -= static_cast<input_word>(CACHE_BLOCKCOUNT - m_cache_index);
+  //     if (m_result_index < m_result_cache.size()) {
+  //       --counter;
+  //     }
+  //     state[12] = static_cast<matrix_word>(counter & 0xFFFFFFFF);
+  //     state[13] = static_cast<matrix_word>(counter >> 32);
+  //   }
+  //   return state;
+  // }
 
 
 private:
   matrix_type m_state;
   alignas(simd_type::arch_type::alignment()) std::array<cache_batch_type, CACHE_BATCHCOUNT> m_cache;
-  result_cache_type m_result_cache{};
-  std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
   // Initialize to "past end of the cache" since cache starts empty.
   std::uint8_t m_cache_index = CACHE_BLOCKCOUNT;
 
@@ -200,32 +294,6 @@ private:
     return xsimd::load_unaligned(incs.data());
   }
 
-  static constexpr PRNG_ALWAYS_INLINE result_cache_type block_to_results(const matrix_type& block) noexcept {
-#if __cplusplus >= 202002L
-    return std::bit_cast<result_cache_type>(block);
-#else
-    result_cache_type results{};
-    for (auto i = std::size_t{0}; i < results.size(); ++i) {
-      results[i] =
-        static_cast<result_type>(block[2 * i]) |
-        (static_cast<result_type>(block[2 * i + 1]) << 32);
-    }
-    return results;
-#endif
-  }
-
-  static constexpr PRNG_ALWAYS_INLINE matrix_type results_to_block(const result_cache_type& results) noexcept {
-#if __cplusplus >= 202002L
-    return std::bit_cast<matrix_type>(results);
-#else
-    matrix_type block{};
-    for (auto i = std::size_t{0}; i < results.size(); ++i) {
-      block[2 * i] = static_cast<matrix_word>(results[i] & 0xFFFFFFFF);
-      block[2 * i + 1] = static_cast<matrix_word>(results[i] >> 32);
-    }
-    return block;
-#endif
-  }
 
   PRNG_ALWAYS_INLINE static void init_state_batches(working_state_type& x, const matrix_type& state,
                                                     simd_type lower_counter_inc, simd_type higher_counter_inc) noexcept {
@@ -402,7 +470,7 @@ private:
     transpose_into_cache(cache, x);
   }
 
-  PRNG_ALWAYS_INLINE constexpr matrix_type next_block() noexcept {
+  PRNG_ALWAYS_INLINE matrix_type next_block() noexcept override {
     if (m_cache_index >= CACHE_BLOCKCOUNT) [[unlikely]] {
       gen_next_blocks_in_cache();
       m_cache_index = 0;
@@ -427,6 +495,7 @@ private:
 
   /**
    * Generates one or two SIMD batches, depending on the target ISA, and writes them into the cache.
+   * Also advances the state's counter words by the amount of ChaCha blocks generated.
    */
   PRNG_ALWAYS_INLINE constexpr void gen_next_blocks_in_cache() noexcept {
     auto state = m_state;
@@ -437,4 +506,21 @@ private:
     m_state = state;
   }
 };
-}
+
+template <std::uint8_t R>
+struct ChaChaSIMDCreator {
+  const typename std::array<typename ChaChaSIMD<R>::matrix_word, ChaChaSIMD<R>::KEY_WORDCOUNT> key;
+  const typename ChaChaSIMD<R>::input_word counter, nonce;
+  template <class Arch>
+  std::unique_ptr<typename ChaChaSIMD<R>::IChaChaSIMD> operator()(Arch) const;
+};
+
+template <std::uint8_t R>
+template <class Arch>
+std::unique_ptr<typename ChaChaSIMD<R>::IChaChaSIMD> ChaChaSIMDCreator<R>::operator()(Arch) const {
+  return std::make_unique<ChaChaSIMDImpl<Arch, R>>(key, counter, nonce);
+};
+
+} // namespace internal
+
+} // namespace prng
