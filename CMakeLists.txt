@@ -92,36 +92,37 @@ target_compile_options(random PRIVATE ${COMPILE_OPTIONS})
 target_link_options(random PRIVATE ${LINK_OPTIONS})
 target_compile_features(random PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
 
-foreach (MARCH_VERSION IN ITEMS x86-64 x86-64-v2 x86-64-v3 x86-64-v4)
-    # hard-coded nearest valid -mtune for each x86-64 level
-    if (MARCH_VERSION STREQUAL "x86-64")
-        set(MTUNE "generic")
-    elseif (MARCH_VERSION STREQUAL "x86-64-v2")
-        set(MTUNE "sandybridge")
-    elseif (MARCH_VERSION STREQUAL "x86-64-v3")
-        set(MTUNE "haswell")
-    elseif (MARCH_VERSION STREQUAL "x86-64-v4")
-        set(MTUNE "skylake-avx512")  # falls back gracefully if ignored by Clang
-    endif ()
+foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
+    foreach (MARCH_VERSION IN ITEMS x86-64 x86-64-v2 x86-64-v3 x86-64-v4)
+        # hard-coded nearest valid -mtune for each x86-64 level
+        if (MARCH_VERSION STREQUAL "x86-64")
+            set(MTUNE "generic")
+        elseif (MARCH_VERSION STREQUAL "x86-64-v2")
+            set(MTUNE "sandybridge")
+        elseif (MARCH_VERSION STREQUAL "x86-64-v3")
+            set(MTUNE "haswell")
+        elseif (MARCH_VERSION STREQUAL "x86-64-v4")
+            set(MTUNE "skylake-avx512")  # falls back gracefully if ignored by Clang
+        endif ()
 
-    string(REPLACE "-" "_" TARGET_SUFFIX "${MARCH_VERSION}")
-    set(SIMD_SOURCE_TARGET "xoshiro_simd_source_${TARGET_SUFFIX}")
+        string(REPLACE "-" "_" TARGET_SUFFIX "${MARCH_VERSION}")
+        set(SIMD_SOURCE_TARGET "${PRNG_TYPE}_simd_source_${TARGET_SUFFIX}")
 
-    add_library(${SIMD_SOURCE_TARGET} OBJECT src/xoshiro_simd_dispatch.cpp)
-    target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd)
-    target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} -march=${MARCH_VERSION} -mtune=${MTUNE})
-    set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES 
-        POSITION_INDEPENDENT_CODE ON
-        INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
-        INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
-        INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
-    )
-    target_link_options(${SIMD_SOURCE_TARGET} PRIVATE ${LINK_OPTIONS})
-    target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
-    target_sources(random PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
+        add_library(${SIMD_SOURCE_TARGET} OBJECT src/${PRNG_TYPE}_simd_dispatch.cpp)
+        target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd)
+        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} -march=${MARCH_VERSION} -mtune=${MTUNE})
+        set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES 
+            POSITION_INDEPENDENT_CODE ON
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
+            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
+            INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
+        )
+        target_link_options(${SIMD_SOURCE_TARGET} PRIVATE ${LINK_OPTIONS})
+        target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
+        target_sources(random PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
+    endforeach ()
 endforeach ()
-
 
 if (ENABLE_TESTS)
     enable_testing()
