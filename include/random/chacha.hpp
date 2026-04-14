@@ -1,13 +1,11 @@
 #pragma once
 
 #include <array>
-#include <cstdint> 
+#include <bit>
+#include <cstdint>
+#include <limits>
 
 #include "macros.hpp"
-
-#if __cplusplus >= 202002L
-#include <bit>
-#endif
 
 namespace prng {
 
@@ -110,30 +108,10 @@ private:
   result_cache_type m_result_cache{};
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
 
-  // NOTE: THis is almost identical to the rotl in xoshiro_scalar, safe for the nubmer
-  // of bits the operation is performed on. Maybe wanna consider making it a shared func?
-  /**
-   * @brief Rotates the bits of a 32-bit integer to the left.
-   * @param x The integer to rotate.
-   * @param k The number of bits to rotate.
-   * @return The rotated integer.
-   */
   static constexpr PRNG_ALWAYS_INLINE auto rotl(const matrix_word x, const int k) noexcept {
-#if __cplusplus >= 202002L
     return std::rotl(x, k);
-#else
-    return (x << k) | (x >> (32 - k));
-#endif
-};
+  }
 
-  /**
-   * @brief Perform a quarter round (as defined for ChaCha stream ciphers) on a given matrix.
-   * @param matrix The matrix to perform the quarter round on.
-   * @param a First matrix index to perform quarter round on.
-   * @param b Second matrix index to perform quarter round on.
-   * @param c Third matrix index to perform quarter round on.
-   * @param d Fourht matrix index to perform quarter round on.
-   */
   static constexpr PRNG_ALWAYS_INLINE void quarter_round(
     matrix_type &m,
     const unsigned int a,
@@ -147,9 +125,6 @@ private:
     m[c] += m[d]; m[b] ^= m[c]; m[b] = rotl(m[b],  7);
   }
 
-  /**
-   * @brief Increments the counter component of the state by 1
-   */
   constexpr PRNG_ALWAYS_INLINE void inc_counter() noexcept {
     if (++m_state[12] == 0) {
       ++m_state[13];
@@ -157,30 +132,11 @@ private:
   }
 
   static constexpr PRNG_ALWAYS_INLINE result_cache_type block_to_results(const matrix_type& block) noexcept {
-#if __cplusplus >= 202002L
     return std::bit_cast<result_cache_type>(block);
-#else
-    result_cache_type results{};
-    for (auto i = std::size_t{0}; i < results.size(); ++i) {
-      results[i] =
-        static_cast<result_type>(block[2 * i]) |
-        (static_cast<result_type>(block[2 * i + 1]) << 32);
-    }
-    return results;
-#endif
   }
 
   static constexpr PRNG_ALWAYS_INLINE matrix_type results_to_block(const result_cache_type& results) noexcept {
-#if __cplusplus >= 202002L
     return std::bit_cast<matrix_type>(results);
-#else
-    matrix_type block{};
-    for (auto i = std::size_t{0}; i < results.size(); ++i) {
-      block[2 * i] = static_cast<matrix_word>(results[i] & 0xFFFFFFFF);
-      block[2 * i + 1] = static_cast<matrix_word>(results[i] >> 32);
-    }
-    return block;
-#endif
   }
 
   constexpr PRNG_ALWAYS_INLINE result_type next_result() noexcept {
@@ -197,7 +153,7 @@ private:
   */
   PRNG_FLATTEN constexpr PRNG_ALWAYS_INLINE matrix_type next_block() noexcept {
     matrix_type x = m_state;
-    
+
     // Note that we perform both an odd and even round at the same time.
     // As a result the amount of rounds performed is always rounded up to an even number.
     for (auto i = 0; i < R; i += 2) {

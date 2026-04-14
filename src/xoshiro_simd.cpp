@@ -1,22 +1,17 @@
 #include "random/xoshiro_simd.hpp"
+#include <xsimd/xsimd.hpp>
 
 namespace prng {
 
-using namespace internal;
-
-std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-create_xoshiro_simd_impl(XoshiroSIMD::result_type seed, XoshiroSIMD::result_type thread_id,
-                         XoshiroSIMD::result_type cluster_id,
-                         std::array<XoshiroSIMD::result_type, XoshiroSIMD::CACHE_SIZE> &cache) {
-  // Dispatch to the appropriate implementation based on runtime-detected
-  // architecture.
-  return xsimd::dispatch<xsimd::arch_list<xsimd::avx512f, xsimd::fma3<xsimd::avx2>, xsimd::sse4_2, xsimd::sse2>>(
-      XoshiroSIMDCreator{seed, thread_id, cluster_id, cache})();
+XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id, const result_type cluster_id) noexcept
+    : m_cache{}, m_state{}, m_index{0} {
+  auto result =
+      xsimd::dispatch<xsimd::arch_list<xsimd::avx512f, xsimd::avx2, xsimd::sse2>>(
+          internal::XoshiroSIMDInitFunctor{m_state.data, seed, thread_id, cluster_id})();
+  m_populate_cache = result.populate_cache;
+  m_jump = result.jump;
+  m_mid_jump = result.mid_jump;
+  m_long_jump = result.long_jump;
 }
 
-// Definitions of XoshiroSIMD's member functions.
-XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id, const result_type cluster_id) noexcept
-    : m_cache{}, pImpl{create_xoshiro_simd_impl(seed, thread_id, cluster_id, m_cache)}, m_index{0} {}
-
-// fill_uniform / fill_uint64 have been moved to the Python extension.
 } // namespace prng

@@ -77,6 +77,43 @@ TEST_CASE("GENERATE UINT64", "[xoshiro256++]") {
   }
 }
 
+TEST_CASE("MID JUMP", "[xoshiro256++]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  prng::XoshiroScalar reference(seed);
+  prng::XoshiroNative rng(seed);
+  rng.mid_jump();
+  reference.mid_jump();
+  for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
+    INFO("i: " << i);
+    REQUIRE(rng.getState(i) == reference.getState());
+    reference.jump();
+  }
+}
+
+TEST_CASE("SIMD DISPATCH JUMP", "[xoshiro256++]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  prng::XoshiroSIMD simd(seed);
+  prng::XoshiroSIMD simd2(seed);
+  // Both should produce the same output
+  for (int i = 0; i < 1024; ++i) {
+    REQUIRE(simd() == simd2());
+  }
+  // After jump, they should diverge
+  simd.jump();
+  REQUIRE(simd() != simd2());
+}
+
+TEST_CASE("SIMD DISPATCH MID JUMP", "[xoshiro256++]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  prng::XoshiroSIMD simd(seed);
+  prng::XoshiroSIMD simd2(seed);
+  simd.mid_jump();
+  REQUIRE(simd() != simd2());
+}
+
 TEST_CASE("GENERATE DOUBLE", "[xoshiro256++]") {
   const auto seed = std::random_device()();
   INFO("SEED: " << seed);

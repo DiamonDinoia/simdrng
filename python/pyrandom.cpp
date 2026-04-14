@@ -4,7 +4,6 @@
 #include <type_traits>  // std::void_t, std::true_type, std::false_type
 #include <utility>      // std::forward
 #include <stdexcept>
-#include <memory>
 #include <cstring>
 #include <vector>
 
@@ -67,7 +66,7 @@ public:
     std::size_t produced = 0;
     while (produced < n) {
       if (m_index == 0) [[unlikely]] {
-        pImpl->populate_cache();
+        m_populate_cache(m_state.data, m_cache);
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
@@ -90,7 +89,7 @@ public:
     std::size_t produced = 0;
     while (produced < n) {
       if (m_index == 0) [[unlikely]] {
-        pImpl->populate_cache();
+        m_populate_cache(m_state.data, m_cache);
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
@@ -113,7 +112,7 @@ public:
     std::size_t produced = 0;
     while (produced < n) {
       if (m_index == 0) [[unlikely]] {
-        pImpl->populate_cache();
+        m_populate_cache(m_state.data, m_cache);
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
@@ -136,7 +135,7 @@ public:
     std::size_t produced = 0;
     while (produced < n) {
       if (m_index == 0) [[unlikely]] {
-        pImpl->populate_cache();
+        m_populate_cache(m_state.data, m_cache);
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;

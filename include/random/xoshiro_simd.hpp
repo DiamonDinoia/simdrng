@@ -25,7 +25,6 @@ Vigna.
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <memory> // added for std::unique_ptr
 
 #include <xsimd/xsimd.hpp>
 
@@ -34,42 +33,32 @@ Vigna.
 
 namespace prng {
 
-/**
- * Forward declaration of the XoshiroSIMD class.
- */
 class XoshiroSIMD;
 
 namespace internal {
 
 /**
- * Implementation of the XoshiroSIMD class template.
+ * SIMD state for the vectorized Xoshiro256++ generator.
+ * Contains the 4 SIMD register state and all PRNG operations.
  *
- * @tparam Arch The architecture type for SIMD operations.
+ * @tparam Arch The xsimd architecture type.
  */
-template <class Arch> class XoshiroSIMDImpl {
-public:
+template <class Arch> struct XoshiroState {
   using result_type = std::uint64_t;
-  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto stateSize() noexcept { return RNG_WIDTH; }
-
-protected:
   using simd_type = xsimd::batch<result_type, Arch>;
-  static constexpr auto RNG_WIDTH = std::uint8_t{4};
-  static constexpr auto SIMD_WIDTH = std::uint8_t{simd_type::size};
-  static constexpr auto CACHE_SIZE = std::uint16_t{std::numeric_limits<std::uint8_t>::max() + 1};
+  static constexpr std::uint8_t RNG_WIDTH = 4;
+  static constexpr std::uint8_t SIMD_WIDTH = simd_type::size;
+  static constexpr std::uint16_t CACHE_SIZE =
+      std::numeric_limits<std::uint8_t>::max() + 1;
 
-public:
+  alignas(simd_type::arch_type::alignment()) std::array<simd_type, RNG_WIDTH> s{};
+
   /**
-   * Constructor that initializes the generator with a seed and an external cache.
-   *
-   * @param seed The seed value.
-   * @param cache Reference to the external cache.
+   * Seed the SIMD state from a scalar seed, with optional thread and cluster offsets.
    */
-  PRNG_ALWAYS_INLINE constexpr explicit XoshiroSIMDImpl(const result_type seed,
-                                                        std::array<result_type, CACHE_SIZE> &cache) noexcept
-      : m_cache(cache), m_state{}, m_index{0} {
-    XoshiroScalar rng{seed};
+  PRNG_ALWAYS_INLINE constexpr void seed(result_type seed_val, result_type thread_id = 0,
+                                          result_type cluster_id = 0) noexcept {
+    XoshiroScalar rng{seed_val};
     std::array<std::array<result_type, SIMD_WIDTH>, RNG_WIDTH> states{};
     for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
       for (auto j = 0UL; j < RNG_WIDTH; ++j) {
@@ -78,369 +67,259 @@ public:
       rng.jump();
     }
     for (auto i = UINT8_C(0); i < RNG_WIDTH; ++i) {
-      m_state[i] = simd_type::load_unaligned(states[i].data());
+      s[i] = simd_type::load_unaligned(states[i].data());
     }
-  }
-
-  /**
-   * Constructor that initializes the generator with a seed, thread ID, and an external cache.
-   *
-   * @param seed The seed value.
-   * @param thread_id The thread ID.
-   * @param cache Reference to the external cache.
-   */
-  PRNG_ALWAYS_INLINE constexpr explicit XoshiroSIMDImpl(const result_type seed, const result_type thread_id,
-                                                        std::array<result_type, CACHE_SIZE> &cache) noexcept
-      : XoshiroSIMDImpl(seed, cache) {
     for (result_type i = 0; i < thread_id; ++i) {
       mid_jump();
     }
-  }
-
-  /**
-   * Constructor that initializes the generator with a seed, thread ID, and an external cache.
-   *
-   * @param seed The seed value.
-   * @param thread_id The thread ID.
-   * @param cluster_id The cluster ID.
-   * @param cache Reference to the external cache.
-   */
-  PRNG_ALWAYS_INLINE constexpr explicit XoshiroSIMDImpl(const result_type seed, const result_type thread_id,
-                                                        const result_type cluster_id,
-                                                        std::array<result_type, CACHE_SIZE> &cache) noexcept
-      : XoshiroSIMDImpl(seed, thread_id, cache) {
     for (result_type i = 0; i < cluster_id; ++i) {
       long_jump();
     }
   }
 
-  /**
-   * Generates the next random number.
-   *
-   * @return The next random number.
-   */
-  PRNG_ALWAYS_INLINE constexpr auto operator()() noexcept {
-    if (m_index == 0) [[unlikely]] {
-      populate_cache();
-    }
-    return m_cache[m_index++];
-  }
+  PRNG_ALWAYS_INLINE constexpr simd_type next() noexcept {
+    const auto result = xsimd::rotl<23>(s[0] + s[3]) + s[0];
+    const auto t = xsimd::bitwise_lshift<17>(s[1]);
 
-  /**
-   * Generates a uniform random number in the range [0, 1).
-   *
-   * @return A uniform random number.
-   */
-  PRNG_ALWAYS_INLINE constexpr auto uniform() noexcept {
-    // 53-bit path: use the high 53 bits for IEEE-754 double mantissa
-    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
-  }
+    s[2] ^= s[0];
+    s[3] ^= s[1];
 
-  /**
-   * Returns the state of the generator at the specified index.
-   *
-   * @param index The index of the state.
-   * @return The state at the specified index.
-   */
-  PRNG_ALWAYS_INLINE constexpr auto getState(const std::size_t index) const noexcept {
-    std::array<result_type, RNG_WIDTH> state{};
-    for (auto i = UINT8_C(0); i < RNG_WIDTH; ++i) {
-      state[i] = m_state[i].get(index);
-    }
-    return state;
-  }
+    s[1] ^= s[2];
+    s[0] ^= s[3];
 
-  /**
-   * Jump function for the generator. It is equivalent to 2^128 calls to next().
-   * It can be used to generate 2^128 non-overlapping subsequences for parallel computations.
-   */
-  PRNG_ALWAYS_INLINE constexpr void jump() noexcept {
-    constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
-    simd_type s0(0);
-    simd_type s1(0);
-    simd_type s2(0);
-    simd_type s3(0);
-    for (const auto i : JUMP)
-      for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
-          s0 ^= m_state[0];
-          s1 ^= m_state[1];
-          s2 ^= m_state[2];
-          s3 ^= m_state[3];
-        }
-        next();
-      }
-    m_state[0] = s0;
-    m_state[1] = s1;
-    m_state[2] = s2;
-    m_state[3] = s3;
-  }
+    s[2] ^= t;
 
-  /**
-   * @brief Jump function for the generator. It is equivalent to 2^160 calls to next().
-   * It can be used to generate 2^96 non-overlapping subsequences for parallel computations.
-   */
-  PRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
-    constexpr result_type MID_JUMP[] = {0xc04b4f9c5d26c200, 0x69e6e6e431a2d40b, 0x4823b45b89dc689c, 0xf567382197055bf0};
-    simd_type s0(0);
-    simd_type s1(0);
-    simd_type s2(0);
-    simd_type s3(0);
-    for (const auto i : MID_JUMP)
-      for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
-          s0 ^= m_state[0];
-          s1 ^= m_state[1];
-          s2 ^= m_state[2];
-          s3 ^= m_state[3];
-        }
-        next();
-      }
-    m_state[0] = s0;
-    m_state[1] = s1;
-    m_state[2] = s2;
-    m_state[3] = s3;
-  }
-
-  /**
-   * @brief Long-jump function for the generator. It is equivalent to 2^192 calls to next().
-   * It can be used to generate 2^64 starting points, from each of which jump() will generate 2^64 non-overlapping
-   * subsequences for parallel distributed computations.
-   */
-  PRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
-    constexpr result_type LONG_JUMP[] = {0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241,
-                                         0x39109bb02acbe635};
-    simd_type s0(0);
-    simd_type s1(0);
-    simd_type s2(0);
-    simd_type s3(0);
-    for (const auto i : LONG_JUMP)
-      for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
-          s0 ^= m_state[0];
-          s1 ^= m_state[1];
-          s2 ^= m_state[2];
-          s3 ^= m_state[3];
-        }
-        next();
-      }
-    m_state[0] = s0;
-    m_state[1] = s1;
-    m_state[2] = s2;
-    m_state[3] = s3;
-  }
-
-private:
-  // removed alignas on reference (has no effect / can be ill-formed)
-  std::array<result_type, CACHE_SIZE> &m_cache;
-  alignas(simd_type::arch_type::alignment()) std::array<simd_type, RNG_WIDTH> m_state;
-  std::uint8_t m_index;
-
-  /**
-   * Generates the next state of the generator.
-   *
-   * @return The next state.
-   */
-  PRNG_ALWAYS_INLINE constexpr auto next() noexcept {
-    const auto result = xsimd::rotl<23>(m_state[0] + m_state[3]) + m_state[0];
-    const auto t = xsimd::bitwise_lshift<17>(m_state[1]);
-
-    m_state[2] ^= m_state[0];
-    m_state[3] ^= m_state[1];
-
-    m_state[1] ^= m_state[2];
-    m_state[0] ^= m_state[3];
-
-    m_state[2] ^= t;
-
-    m_state[3] = xsimd::rotl<45>(m_state[3]);
+    s[3] = xsimd::rotl<45>(s[3]);
 
     return result;
   }
 
-  /**
-   * Unrolled loop to populate the cache.
-   *
-   * @tparam Is The indices of the cache.
-   */
-  template <size_t... Is> PRNG_ALWAYS_INLINE constexpr void unroll_populate(std::index_sequence<Is...>) noexcept {
-    (next().store_aligned(m_cache.data() + Is * SIMD_WIDTH), ...);
+  template <size_t... Is>
+  PRNG_ALWAYS_INLINE constexpr void unroll_populate(std::index_sequence<Is...>,
+                                                     std::array<result_type, CACHE_SIZE> &cache) noexcept {
+    (next().store_aligned(cache.data() + Is * SIMD_WIDTH), ...);
+  }
+
+  PRNG_ALWAYS_INLINE constexpr void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
+    unroll_populate(std::make_index_sequence<CACHE_SIZE / SIMD_WIDTH>{}, cache);
   }
 
   /**
-   * Populates the cache with random numbers.
+   * Jump function. Equivalent to 2^128 calls to next().
    */
-  PRNG_ALWAYS_INLINE constexpr void populate_cache() noexcept {
-    unroll_populate(std::make_index_sequence<CACHE_SIZE / SIMD_WIDTH>{});
+  PRNG_ALWAYS_INLINE constexpr void jump() noexcept {
+    constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
+    simd_type s0(0), s1(0), s2(0), s3(0);
+    for (const auto i : JUMP)
+      for (auto b = 0; b < 64; b++) {
+        if (i & result_type{1} << b) {
+          s0 ^= s[0];
+          s1 ^= s[1];
+          s2 ^= s[2];
+          s3 ^= s[3];
+        }
+        next();
+      }
+    s[0] = s0;
+    s[1] = s1;
+    s[2] = s2;
+    s[3] = s3;
   }
 
-  friend XoshiroSIMD;
+  /**
+   * Mid-jump function. Equivalent to 2^160 calls to next().
+   */
+  PRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
+    constexpr result_type MID_JUMP[] = {0xc04b4f9c5d26c200, 0x69e6e6e431a2d40b, 0x4823b45b89dc689c,
+                                         0xf567382197055bf0};
+    simd_type s0(0), s1(0), s2(0), s3(0);
+    for (const auto i : MID_JUMP)
+      for (auto b = 0; b < 64; b++) {
+        if (i & result_type{1} << b) {
+          s0 ^= s[0];
+          s1 ^= s[1];
+          s2 ^= s[2];
+          s3 ^= s[3];
+        }
+        next();
+      }
+    s[0] = s0;
+    s[1] = s1;
+    s[2] = s2;
+    s[3] = s3;
+  }
 
+  /**
+   * Long-jump function. Equivalent to 2^192 calls to next().
+   */
+  PRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
+    constexpr result_type LONG_JUMP[] = {0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241,
+                                          0x39109bb02acbe635};
+    simd_type s0(0), s1(0), s2(0), s3(0);
+    for (const auto i : LONG_JUMP)
+      for (auto b = 0; b < 64; b++) {
+        if (i & result_type{1} << b) {
+          s0 ^= s[0];
+          s1 ^= s[1];
+          s2 ^= s[2];
+          s3 ^= s[3];
+        }
+        next();
+      }
+    s[0] = s0;
+    s[1] = s1;
+    s[2] = s2;
+    s[3] = s3;
+  }
+
+  PRNG_ALWAYS_INLINE constexpr std::array<result_type, RNG_WIDTH> getState(const std::size_t index) const noexcept {
+    std::array<result_type, RNG_WIDTH> state{};
+    for (auto i = UINT8_C(0); i < RNG_WIDTH; ++i) {
+      state[i] = s[i].get(index);
+    }
+    return state;
+  }
 };
 
-struct XoshiroSIMDCreator;
+/**
+ * Result from the runtime dispatch initialization.
+ */
+struct XoshiroSIMDInitResult {
+  using populate_fn = void (*)(void *, std::array<std::uint64_t, 256> &) noexcept;
+  using jump_fn = void (*)(void *) noexcept;
+  populate_fn populate_cache;
+  jump_fn jump;
+  jump_fn mid_jump;
+  jump_fn long_jump;
+};
+
+/**
+ * Functor used by xsimd::dispatch to initialize a XoshiroSIMD instance.
+ * Placement-news the correct XoshiroState<Arch> into the byte storage and returns function pointers.
+ */
+struct XoshiroSIMDInitFunctor {
+  void *state_storage;
+  std::uint64_t seed, thread_id, cluster_id;
+
+  template <class Arch> XoshiroSIMDInitResult operator()(Arch) const noexcept;
+};
+
+template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(Arch) const noexcept {
+  using State = XoshiroState<Arch>;
+  static_assert(sizeof(State) <= 256, "XoshiroState exceeds StateStorage capacity");
+  static_assert(alignof(State) <= 64, "XoshiroState exceeds StateStorage alignment");
+  auto *state = new (state_storage) State{};
+  state->seed(seed, thread_id, cluster_id);
+  return {
+      +[](void *s, std::array<std::uint64_t, 256> &cache) noexcept { static_cast<State *>(s)->populate_cache(cache); },
+      +[](void *s) noexcept { static_cast<State *>(s)->jump(); },
+      +[](void *s) noexcept { static_cast<State *>(s)->mid_jump(); },
+      +[](void *s) noexcept { static_cast<State *>(s)->long_jump(); },
+  };
+}
+
+extern template XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
+extern template XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
+extern template XoshiroSIMDInitResult
+XoshiroSIMDInitFunctor::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
 
 } // namespace internal
 
 /**
- * XoshiroSIMD class using the best available architecture.
+ * XoshiroNative: uses the best architecture available at compile time.
+ * Zero indirection — direct calls to XoshiroState methods.
  */
-class XoshiroNative : public internal::XoshiroSIMDImpl<xsimd::best_arch> {
-public:
-  using XoshiroSIMDImpl::XoshiroSIMDImpl;
+class XoshiroNative {
+  using State = internal::XoshiroState<xsimd::best_arch>;
+  static constexpr auto CACHE_SIZE = State::CACHE_SIZE;
 
-  /**
-   * Constructor that initializes the generator with a seed.
-   *
-   * @param seed The seed value.
-   */
-  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed) noexcept : XoshiroSIMDImpl(seed, m_cache) {}
-  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id) noexcept
-      : XoshiroSIMDImpl(seed, thread_id, m_cache) {}
+public:
+  using result_type = std::uint64_t;
+  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+  static constexpr PRNG_ALWAYS_INLINE auto stateSize() noexcept { return State::RNG_WIDTH; }
+
+  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed) noexcept { m_state.seed(seed); }
+  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id) noexcept {
+    m_state.seed(seed, thread_id);
+  }
   PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id,
-                                            const result_type cluster_id) noexcept
-      : XoshiroSIMDImpl(seed, thread_id, cluster_id, m_cache) {}
-
-private:
-  alignas(simd_type::arch_type::alignment()) std::array<result_type, CACHE_SIZE> m_cache{};
-};
-
-/**
- * XoshiroSIMD class that provides a high-level interface for the generator.
- */
-class XoshiroSIMD {
-public:
-  using result_type = internal::XoshiroSIMDImpl<xsimd::best_arch>::result_type;
-  constexpr static PRNG_ALWAYS_INLINE result_type(min)() noexcept {
-    return internal::XoshiroSIMDImpl<xsimd::best_arch>::min();
-  }
-  constexpr static PRNG_ALWAYS_INLINE result_type(max)() noexcept {
-    return internal::XoshiroSIMDImpl<xsimd::best_arch>::max();
+                                            const result_type cluster_id) noexcept {
+    m_state.seed(seed, thread_id, cluster_id);
   }
 
-  explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
-
-  /**
-   * Generates the next random number.
-   *
-   * @return The next random number.
-   */
   PRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
-      pImpl->populate_cache();
+      m_state.populate_cache(m_cache);
     }
     return m_cache[m_index++];
   }
 
-  /**
-   * Generates a uniform random number in the range [0, 1).
-   *
-   * @return A uniform random number.
-   */
   PRNG_ALWAYS_INLINE double uniform() noexcept {
-    // 53-bit path: use the high 53 bits for IEEE-754 double mantissa
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
-  // Bulk fill helpers are implemented in the Python extension to reduce
-  // surface area of the core C++ API. Use per-sample operator()/uniform().
+  PRNG_ALWAYS_INLINE auto getState(const std::size_t index) const noexcept { return m_state.getState(index); }
 
-  /**
-   * Jump function for the generator.
-   */
-  PRNG_ALWAYS_INLINE void jump() noexcept { pImpl->jump(); }
+  PRNG_ALWAYS_INLINE void jump() noexcept { m_state.jump(); }
+  PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_state.mid_jump(); }
+  PRNG_ALWAYS_INLINE void long_jump() noexcept { m_state.long_jump(); }
 
-  /**
-   * Long-jump function for the generator.
-   */
-  PRNG_ALWAYS_INLINE void long_jump() noexcept { pImpl->long_jump(); }
+private:
+  alignas(State::simd_type::arch_type::alignment()) std::array<result_type, CACHE_SIZE> m_cache{};
+  State m_state{};
+  std::uint8_t m_index{0};
+};
+
+/**
+ * XoshiroSIMD: runtime SIMD dispatch via inline union + function pointers.
+ * No heap allocation, no virtual dispatch.
+ */
+class XoshiroSIMD {
+public:
+  using result_type = std::uint64_t;
+  static constexpr PRNG_ALWAYS_INLINE result_type(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr PRNG_ALWAYS_INLINE result_type(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+
+  explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
+
+  PRNG_ALWAYS_INLINE result_type operator()() noexcept {
+    if (m_index == 0) [[unlikely]] {
+      m_populate_cache(m_state.data, m_cache);
+    }
+    return m_cache[m_index++];
+  }
+
+  PRNG_ALWAYS_INLINE double uniform() noexcept {
+    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
+  }
+
+  PRNG_ALWAYS_INLINE void jump() noexcept { m_jump(m_state.data); }
+  PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
+  PRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
 
 protected:
-  static constexpr auto CACHE_SIZE = internal::XoshiroSIMDImpl<xsimd::default_arch>::CACHE_SIZE;
+  static constexpr std::uint16_t CACHE_SIZE = std::numeric_limits<std::uint8_t>::max() + 1;
+  using populate_fn = void (*)(void *, std::array<result_type, CACHE_SIZE> &) noexcept;
+  using jump_fn = void (*)(void *) noexcept;
 
-  /**
-   * Abstract interface to hide the templated implementation.
-   */
-  struct IXoshiroSIMD {
-    virtual ~IXoshiroSIMD() = default;
-    virtual void populate_cache() noexcept = 0;
-    virtual void jump() noexcept = 0;
-    virtual void long_jump() noexcept = 0;
+  // Raw byte storage for the arch-specific XoshiroState.
+  // Typed union is not viable: xsimd batch types have different sizeof
+  // across TUs compiled with different -march flags (ODR divergence).
+  // Max is avx512f: 4 × sizeof(__m512i) = 4 × 64 = 256 bytes, align 64.
+  struct StateStorage {
+    static constexpr std::size_t SIZE = 256;
+    static constexpr std::size_t ALIGN = 64;
+    alignas(ALIGN) unsigned char data[SIZE];
   };
 
-  /**
-   * Templated wrapper that delegates to internal::XoshiroSIMDImpl<Arch>.
-   *
-   * @tparam Arch The architecture type for SIMD operations.
-   */
-  template <class Arch> class ImplWrapper : public IXoshiroSIMD {
-    internal::XoshiroSIMDImpl<Arch> impl;
-
-  public:
-    PRNG_ALWAYS_INLINE explicit ImplWrapper(result_type seed, result_type thread_id, result_type cluster_id,
-                                            std::array<result_type, CACHE_SIZE> &cache) noexcept
-        : impl(seed, thread_id, cluster_id, cache) {}
-    PRNG_ALWAYS_INLINE void populate_cache() noexcept final { impl.populate_cache(); }
-    PRNG_ALWAYS_INLINE void jump() noexcept final { impl.jump(); }
-    PRNG_ALWAYS_INLINE void long_jump() noexcept final { impl.long_jump(); }
-  };
-
-  alignas(64) std::array<result_type, CACHE_SIZE> m_cache;
-  std::unique_ptr<IXoshiroSIMD> pImpl;
-  std::uint8_t m_index{0}; // ensure zero-initialized
-
-  friend std::unique_ptr<IXoshiroSIMD> create_xoshiro_simd_impl(result_type seed, result_type thread_id,
-                                                                result_type cluster_id,
-                                                                std::array<result_type, CACHE_SIZE> &cache);
-  friend internal::XoshiroSIMDCreator;
+  alignas(64) std::array<result_type, CACHE_SIZE> m_cache{};
+  alignas(64) StateStorage m_state;
+  populate_fn m_populate_cache = nullptr;
+  jump_fn m_jump = nullptr;
+  jump_fn m_mid_jump = nullptr;
+  jump_fn m_long_jump = nullptr;
+  std::uint8_t m_index{0};
 };
-
-/**
- * Extern function declaration to create a XoshiroSIMD implementation.
- *
- * @param seed The seed value.
- * @param thread_id The thread ID.
- * @param cluster_id The cluster ID.
- * @param cache Reference to the external cache.
- * @return A unique pointer to the XoshiroSIMD implementation.
- */
-std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-create_xoshiro_simd_impl(XoshiroSIMD::result_type seed, XoshiroSIMD::result_type thread_id,
-                         XoshiroSIMD::result_type cluster_id,
-                         std::array<XoshiroSIMD::result_type, XoshiroSIMD::CACHE_SIZE> &cache);
-
-namespace internal {
-
-/**
- * Functor used by xsimd::dispatch to create a XoshiroSIMD implementation.
- */
-struct XoshiroSIMDCreator {
-  XoshiroSIMD::result_type seed, thread_id, cluster_id;
-  std::array<XoshiroSIMD::result_type, XoshiroSIMD::CACHE_SIZE> &cache;
-
-  /**
-   * Operator that creates a XoshiroSIMD implementation for the given architecture.
-   *
-   * @tparam Arch The architecture type for SIMD operations.
-   * @param arch The architecture tag.
-   * @return A unique pointer to the XoshiroSIMD implementation.
-   */
-  template <class Arch> std::unique_ptr<XoshiroSIMD::IXoshiroSIMD> operator()(Arch) const;
-};
-
-template <class Arch> std::unique_ptr<XoshiroSIMD::IXoshiroSIMD> XoshiroSIMDCreator::operator()(Arch) const {
-  return std::make_unique<XoshiroSIMD::ImplWrapper<Arch>>(seed, thread_id, cluster_id, cache);
-}
-
-extern template std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-XoshiroSIMDCreator::operator()<xsimd::sse2>(xsimd::sse2) const;
-extern template std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-XoshiroSIMDCreator::operator()<xsimd::sse4_2>(xsimd::sse4_2) const;
-extern template std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-XoshiroSIMDCreator::operator()<xsimd::fma3<xsimd::avx2>>(xsimd::fma3<xsimd::avx2>) const;
-extern template std::unique_ptr<XoshiroSIMD::IXoshiroSIMD>
-XoshiroSIMDCreator::operator()<xsimd::avx512f>(xsimd::avx512f) const;
-
-} // namespace internal
 
 } // namespace prng
