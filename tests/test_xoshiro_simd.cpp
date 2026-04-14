@@ -28,8 +28,9 @@ TEST_CASE("JUMP", "[xoshiro256++]") {
     REQUIRE(rng.getState(i) == reference.getState());
     reference.jump();
   }
-  rng.jump();
-  rng.jump();
+  for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
+    rng.jump();
+  }
   for (auto i = 0U; i < SIMD_WIDTH; ++i) {
     INFO("i: " << i);
     REQUIRE(rng.getState(i) == reference.getState());
