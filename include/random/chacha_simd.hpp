@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <xsimd/xsimd.hpp>
 
-#include "random/macros.hpp"
+#include "macros.hpp"
 
 namespace prng {
 
@@ -20,6 +20,11 @@ namespace internal {
 }
 
 template <std::uint8_t R = 20>
+
+/**
+ * High-level interface for a pseudo-random number generator using
+ * ChaCha by Daniel. J. Bernstein., uses SIMD under the hood.
+ */
 class ChaChaSIMD {
 public:
   static constexpr auto MATRIX_WORDCOUNT = std::uint8_t{16};
@@ -30,6 +35,16 @@ public:
   using matrix_word = std::uint32_t;
   using matrix_type = std::array<matrix_word, MATRIX_WORDCOUNT>;
   using result_cache_type = std::array<result_type, MATRIX_WORDCOUNT / 2>;
+
+  /**
+   * Abstract interface for templated ChaChaSIMDImpl
+   */
+  struct IChaChaSIMD {
+    virtual ~IChaChaSIMD() = default;
+    virtual matrix_type next_block() = 0;
+    virtual matrix_type getState(bool prev) const = 0;
+    virtual size_t getSIMDSize() const = 0;
+  };
 
   static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept {
     return (std::numeric_limits<result_type>::min)();
@@ -67,7 +82,10 @@ public:
   }
 
   /**
-   * @brief Construct a SIMD ChaCha generator with given key, counter and nonce
+   * Construct a SIMD ChaCha generator with given key, counter and nonce.
+   * The underlying SIMD implementation is dispatched at runtime to use the best
+   * available architecture supported by the host.
+   * 
    * @param key A 256-bit key, divided up into eight 32-bit words.
    * @param counter Initial value of the counter.
    * @param nonce Initial value of the nonce.
@@ -76,11 +94,16 @@ public:
     const std::array<matrix_word, KEY_WORDCOUNT> key,
     const input_word counter,
     const input_word nonce
-  ) {
-    // TODO: Don't do it this way but use extern and a proper creator function to ensure other architectures
-    // are compiled into the binary.
-    pImpl = xsimd::dispatch<xsimd::arch_list<xsimd::avx512f, xsimd::fma3<xsimd::avx2>, xsimd::sse4_2, xsimd::sse2>>(internal::ChaChaSIMDCreator<R>{key, counter, nonce})();
-  }
+  ) : ChaChaSIMD(
+    xsimd::dispatch<xsimd::arch_list<xsimd::avx512f, xsimd::fma3<xsimd::avx2>, xsimd::sse4_2, xsimd::sse2>>
+    (internal::ChaChaSIMDCreator<R>{key, counter, nonce})()
+  ) {}
+
+protected:
+  explicit PRNG_ALWAYS_INLINE ChaChaSIMD(std::unique_ptr<IChaChaSIMD> pImpl)
+    : pImpl(std::move(pImpl)) {}
+
+public:
 
   /**
    * @brief Generates the next 64-bit output.
@@ -123,11 +146,13 @@ public:
     return pImpl->getState(m_result_index < m_result_cache.size());
   }
 
-  struct IChaChaSIMD {
-    virtual ~IChaChaSIMD() = default;
-    virtual matrix_type next_block() = 0;
-    virtual matrix_type getState(bool prev) const = 0;
-  };
+  /**
+   * @brief Return the number of 32-bit lanes used by the underlying SIMD implementation.
+   * @return State of the generator.
+   */
+  PRNG_ALWAYS_INLINE size_t getSIMDSize() const noexcept {
+    return pImpl->getSIMDSize();
+  }
 
 private:
   std::unique_ptr<IChaChaSIMD> pImpl;
@@ -136,7 +161,6 @@ private:
   // Initialize to "past end of the cache" since cache starts empty.
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
 };
-
 
 namespace internal {
 
@@ -251,6 +275,14 @@ public:
       state[13] = static_cast<matrix_word>(counter >> 32);
     }
     return state;
+  }
+
+  /**
+   * @brief Return the number of 32-bit lanes used by the underlying SIMD implementation.
+   * @return State of the generator.
+   */
+  PRNG_ALWAYS_INLINE size_t getSIMDSize() const noexcept {
+    return std::size_t{SIMD_WIDTH};
   }
 
 private:
@@ -521,5 +553,30 @@ extern template std::unique_ptr<ChaChaSIMD<>::IChaChaSIMD>
 ChaChaSIMDCreator<20>::operator()<xsimd::avx512f>(xsimd::avx512f) const;
 
 } // namespace internal
+
+
+/**
+ * `ChaChaSIMD<R>` class that uses the best architecture that was available at compile time.
+ */
+template <std::uint8_t R = 20>
+class ChaChaNative : public ChaChaSIMD<R> {
+public:
+  using typename ChaChaSIMD<R>::matrix_word;
+  using typename ChaChaSIMD<R>::result_type;
+  using typename ChaChaSIMD<R>::input_word;
+  static constexpr auto KEY_WORDCOUNT = ChaChaSIMD<R>::KEY_WORDCOUNT;
+
+  /**
+   * @brief Construct a SIMD ChaCha generator with given key, counter and nonce.
+   * @param key A 256-bit key, divided up into eight 32-bit words.
+   * @param counter Initial value of the counter.
+   * @param nonce Initial value of the nonce.
+   */
+  ChaChaNative(
+    const std::array<matrix_word, KEY_WORDCOUNT> key,
+    const input_word counter,
+    const input_word nonce
+  ) : ChaChaSIMD<R>(std::make_unique<internal::ChaChaSIMDImpl<xsimd::best_arch, R>>(key, counter, nonce)) {}
+};
 
 } // namespace prng

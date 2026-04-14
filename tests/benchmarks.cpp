@@ -32,20 +32,23 @@ int main() {
   prng::XoshiroNative rng(seed);
   prng::XoshiroScalar reference(seed);
   prng::XoshiroSIMD dispatch(seed);
+  using NativeChaCha20 = prng::ChaChaNative<20>;
   using ScalarChaCha20 = prng::ChaCha<20>;
-  using SimdChaCha20 = prng::ChaChaSIMD<20>; 
+  using SimdChaCha20 = prng::ChaChaSIMD<20>;
   constexpr std::array<ScalarChaCha20::matrix_word, 8> chacha_key = {
     0x03020100u, 0x07060504u, 0x0b0a0908u, 0x0f0e0d0cu,
     0x13121110u, 0x17161514u, 0x1b1a1918u, 0x1f1e1d1cu,
   };
   constexpr ScalarChaCha20::input_word chacha_counter = 0x0706050403020100ULL;
   constexpr ScalarChaCha20::input_word chacha_nonce = 0x0f0e0d0c0b0a0908ULL;
-  // TODO: fix this
-  // std::cout << "ChaCha SIMD width: " << SimdChaCha20::simd_type::size << std::endl;
+  std::cout << "ChaCha SIMD width: " << SimdChaCha20({}, 0, 0).getSIMDSize() << std::endl;
+  NativeChaCha20 chacha_native_uint64(chacha_key, chacha_counter, chacha_nonce);
   ScalarChaCha20 chacha_scalar_uint64(chacha_key, chacha_counter, chacha_nonce);
   SimdChaCha20 chacha_simd_uint64(chacha_key, chacha_counter, chacha_nonce);
+  NativeChaCha20 chacha_native_double(chacha_key, chacha_counter, chacha_nonce);
   ScalarChaCha20 chacha_scalar_double(chacha_key, chacha_counter, chacha_nonce);
   SimdChaCha20 chacha_simd_double(chacha_key, chacha_counter, chacha_nonce);
+  NativeChaCha20 chacha_native_dist(chacha_key, chacha_counter, chacha_nonce);
   ScalarChaCha20 chacha_scalar_dist(chacha_key, chacha_counter, chacha_nonce);
   SimdChaCha20 chacha_simd_dist(chacha_key, chacha_counter, chacha_nonce);
 
@@ -83,12 +86,17 @@ int main() {
         doNotOptimizeAway(mt());
       }
     })
+    .run("ChaCha20 native UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(chacha_native_uint64());
+      }
+    })
     .run("ChaCha20 scalar UINT64", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_scalar_uint64());
       }
     })
-    .run("ChaCha20 SIMD UINT64", [&] {
+    .run("ChaCha20 dispatch UINT64", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_simd_uint64());
       }
@@ -110,12 +118,17 @@ int main() {
         doNotOptimizeAway(dispatch.uniform());
       }
     })
+    .run("ChaCha20 native DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(chacha_native_double.uniform());
+      }
+    })
     .run("ChaCha20 scalar DOUBLE", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_scalar_double.uniform());
       }
     })
-    .run("ChaCha20 SIMD DOUBLE", [&] {
+    .run("ChaCha20 Dispatch DOUBLE", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_simd_double.uniform());
       }
@@ -143,12 +156,17 @@ int main() {
         doNotOptimizeAway(double_dist(mt));
       }
     })
+    .run("ChaCha20 native std::random<double>", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(double_dist(chacha_native_dist));
+      }
+    })
     .run("ChaCha20 scalar std::random<double>", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(double_dist(chacha_scalar_dist));
       }
     })
-    .run("ChaCha20 SIMD std::random<double>", [&] {
+    .run("ChaCha20 Dispatch std::random<double>", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(double_dist(chacha_simd_dist));
       }
