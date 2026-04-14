@@ -30,3 +30,13 @@
 #else
 #  define PRNG_NEVER_INLINE
 #endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#  define PRNG_EXPORT __attribute__((visibility("default")))
+#elif defined(_MSC_VER) && defined(PRNG_BUILDING_SHARED)
+#  define PRNG_EXPORT __declspec(dllexport)
+#elif defined(_MSC_VER) && defined(PRNG_USING_SHARED)
+#  define PRNG_EXPORT __declspec(dllimport)
+#else
+#  define PRNG_EXPORT
+#endif

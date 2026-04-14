@@ -50,7 +50,6 @@ function(get_performance_flags COMPILE_FLAGS_VAR LINK_FLAGS_VAR)
             -fipa-pta
             -fdevirtualize-at-ltrans
             -ffunction-sections -fdata-sections
-            -fvisibility-inlines-hidden
             -funroll-loops
             -fpeel-loops
             -funswitch-loops

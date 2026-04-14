@@ -350,11 +350,11 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch) const noexcept {
   };
 }
 
-extern template ChaChaSIMDInitResult
+extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
-extern template ChaChaSIMDInitResult
+extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
-extern template ChaChaSIMDInitResult
+extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
 
 } // namespace internal

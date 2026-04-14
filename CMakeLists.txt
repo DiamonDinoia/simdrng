@@ -82,15 +82,18 @@ target_include_directories(random PUBLIC
         $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(random PUBLIC xsimd)
-set_target_properties(random PROPERTIES 
+set_target_properties(random PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
     INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
     INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
 )
 target_compile_options(random PRIVATE ${COMPILE_OPTIONS})
 target_link_options(random PRIVATE ${LINK_OPTIONS})
 target_compile_features(random PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
+target_compile_features(random INTERFACE cxx_std_20)
 
 foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
     foreach (MARCH_VERSION IN ITEMS x86-64 x86-64-v3 x86-64-v4)
@@ -106,6 +109,8 @@ foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
             INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
             INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
             INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
         )
         target_link_options(${SIMD_SOURCE_TARGET} PRIVATE ${LINK_OPTIONS})
         target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
