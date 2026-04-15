@@ -10,6 +10,7 @@ endif ()
 
 set(CPM_DOWNLOAD_VERSION 0.42.0)
 set(XSIMD_DOWNLOAD_VERSION 1e7c3b9e37a4bba260f232c6561fa062f3df5f16)
+set(POET_DOWNLOAD_VERSION 4e0c50b75224b9916cb8062a75d81ab7cc403df1)
 
 option(ENABLE_TESTS "Enable tests" ON)
 option(ENABLE_PYTHON "Enable Python bindings" ON)
@@ -38,6 +39,19 @@ CPMAddPackage(
         GIT_SHALLOW YES
         GIT_PROGRESS YES
         EXCLUDE_FROM_ALL YES
+)
+
+CPMAddPackage(
+        NAME poet
+        GITHUB_REPOSITORY DiamonDinoia/poet
+        GIT_TAG ${POET_DOWNLOAD_VERSION}
+        GIT_SHALLOW YES
+        GIT_PROGRESS YES
+        EXCLUDE_FROM_ALL YES
+        OPTIONS
+            "POET_BUILD_TESTS OFF"
+            "POET_BUILD_BENCHMARKS OFF"
+            "POET_STRICT_WARNINGS OFF"
 )
 
 include(CheckCXXCompilerFlag)
@@ -81,7 +95,7 @@ target_include_directories(random PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(random PUBLIC xsimd)
+target_link_libraries(random PUBLIC xsimd poet::poet)
 set_target_properties(random PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
@@ -125,7 +139,7 @@ foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
 
         add_library(${SIMD_SOURCE_TARGET} OBJECT src/${PRNG_TYPE}_simd_dispatch.cpp)
         target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-        target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd)
+        target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd poet::poet)
         target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
         set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
             POSITION_INDEPENDENT_CODE ON

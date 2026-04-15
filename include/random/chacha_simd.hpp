@@ -6,6 +6,8 @@
 #include <limits>
 #include <type_traits>
 
+#include <poet/poet.hpp>
+
 #include "dispatch_arch.hpp"
 #include "macros.hpp"
 
@@ -72,9 +74,9 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
     m_state[2] = 0x79622d32;
     m_state[3] = 0x6b206574;
 
-    for (auto i = std::size_t{0}; i < KEY_WORDCOUNT; ++i) {
-      m_state[4 + i] = key[i];
-    }
+    poet::static_for<0, KEY_WORDCOUNT>([&](auto I) {
+      m_state[4 + I] = key[I];
+    });
 
     m_state[12] = static_cast<matrix_word>(counter & 0xFFFFFFFF);
     m_state[13] = static_cast<matrix_word>(counter >> 32);
@@ -111,9 +113,9 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
 private:
   static inline constexpr std::array<matrix_word, SIMD_WIDTH> LANE_OFFSETS = [] {
     std::array<matrix_word, SIMD_WIDTH> offsets{};
-    for (auto i = std::size_t{0}; i < SIMD_WIDTH; ++i) {
-      offsets[i] = static_cast<matrix_word>(i);
-    }
+    poet::static_for<0, SIMD_WIDTH>([&](auto I) {
+      offsets[I] = static_cast<matrix_word>(I.value);
+    });
     return offsets;
   }();
 
@@ -123,18 +125,18 @@ private:
     }
 
     std::array<matrix_word, SIMD_WIDTH> incs{};
-    for (auto i = std::size_t{1}; i < SIMD_WIDTH; ++i) {
-      incs[i] = static_cast<matrix_word>(overflow_index < i);
-    }
+    poet::static_for<1, SIMD_WIDTH>([&](auto I) {
+      incs[I] = static_cast<matrix_word>(overflow_index < static_cast<matrix_word>(I.value));
+    });
     return simd_type::load_unaligned(incs.data());
   }
 
   PRNG_ALWAYS_INLINE static void init_state_batches(working_state_type &x, const matrix_type &state,
                                                      simd_type lower_counter_inc,
                                                      simd_type higher_counter_inc) noexcept {
-    for (auto i = std::size_t{0}; i < MATRIX_WORDCOUNT; ++i) {
-      x[i] = simd_type::broadcast(state[i]);
-    }
+    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) {
+      x[I] = simd_type::broadcast(state[I]);
+    });
     x[12] += lower_counter_inc;
     x[13] += higher_counter_inc;
   }
@@ -142,9 +144,9 @@ private:
   PRNG_ALWAYS_INLINE static void add_original_state(working_state_type &x, const matrix_type &state,
                                                      simd_type lower_counter_inc,
                                                      simd_type higher_counter_inc) noexcept {
-    for (auto i = std::size_t{0}; i < MATRIX_WORDCOUNT; ++i) {
-      x[i] += simd_type::broadcast(state[i]);
-    }
+    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) {
+      x[I] += simd_type::broadcast(state[I]);
+    });
     x[12] += lower_counter_inc;
     x[13] += higher_counter_inc;
   }
@@ -152,18 +154,26 @@ private:
   static void transpose_into_cache(cache_batch_type &cache, working_state_type &x) noexcept {
     auto *PRNG_RESTRICT cache_lanes = cache.data();
     auto *PRNG_RESTRICT working = x.data();
-    for (auto segment = std::size_t{0}; segment < BLOCK_SEGMENTCOUNT; ++segment) {
-      auto *PRNG_RESTRICT segment_begin = working + segment * SIMD_WIDTH;
+    poet::static_for<0, BLOCK_SEGMENTCOUNT>([&](auto Seg) {
+      auto *PRNG_RESTRICT segment_begin = working + Seg * SIMD_WIDTH;
       xsimd::transpose(segment_begin, segment_begin + SIMD_WIDTH);
-      for (auto lane = std::size_t{0}; lane < SIMD_WIDTH; ++lane) {
-        cache_lanes[lane][segment] = segment_begin[lane];
-      }
-    }
+      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) {
+        cache_lanes[Lane][Seg] = segment_begin[Lane];
+      });
+    });
   }
 
   PRNG_ALWAYS_INLINE static constexpr void advance_counter(matrix_type &state) noexcept {
     state[12] += SIMD_WIDTH;
     state[13] += state[12] < SIMD_WIDTH;
+  }
+
+  template <unsigned A, unsigned B, unsigned C, unsigned D>
+  PRNG_ALWAYS_INLINE static void quarter_round(working_state_type &x) noexcept {
+    x[A] += x[B]; x[D] ^= x[A]; x[D] = xsimd::rotl<16>(x[D]);
+    x[C] += x[D]; x[B] ^= x[C]; x[B] = xsimd::rotl<12>(x[B]);
+    x[A] += x[B]; x[D] ^= x[A]; x[D] = xsimd::rotl<8>(x[D]);
+    x[C] += x[D]; x[B] ^= x[C]; x[B] = xsimd::rotl<7>(x[B]);
   }
 
   PRNG_ALWAYS_INLINE static void gen_block_batch(cache_batch_type &cache, const matrix_type &state) noexcept {
@@ -174,127 +184,18 @@ private:
     working_state_type x;
     init_state_batches(x, state, lower_counter_inc, higher_counter_inc);
 
-    for (auto i = 0; i < R; i += 2) {
-      x[0] += x[4];
-      x[1] += x[5];
-      x[2] += x[6];
-      x[3] += x[7];
-
-      x[12] ^= x[0];
-      x[13] ^= x[1];
-      x[14] ^= x[2];
-      x[15] ^= x[3];
-
-      x[12] = xsimd::rotl<16>(x[12]);
-      x[13] = xsimd::rotl<16>(x[13]);
-      x[14] = xsimd::rotl<16>(x[14]);
-      x[15] = xsimd::rotl<16>(x[15]);
-
-      x[8] += x[12];
-      x[9] += x[13];
-      x[10] += x[14];
-      x[11] += x[15];
-
-      x[4] ^= x[8];
-      x[5] ^= x[9];
-      x[6] ^= x[10];
-      x[7] ^= x[11];
-
-      x[4] = xsimd::rotl<12>(x[4]);
-      x[5] = xsimd::rotl<12>(x[5]);
-      x[6] = xsimd::rotl<12>(x[6]);
-      x[7] = xsimd::rotl<12>(x[7]);
-
-      x[0] += x[4];
-      x[1] += x[5];
-      x[2] += x[6];
-      x[3] += x[7];
-
-      x[12] ^= x[0];
-      x[13] ^= x[1];
-      x[14] ^= x[2];
-      x[15] ^= x[3];
-
-      x[12] = xsimd::rotl<8>(x[12]);
-      x[13] = xsimd::rotl<8>(x[13]);
-      x[14] = xsimd::rotl<8>(x[14]);
-      x[15] = xsimd::rotl<8>(x[15]);
-
-      x[8] += x[12];
-      x[9] += x[13];
-      x[10] += x[14];
-      x[11] += x[15];
-
-      x[4] ^= x[8];
-      x[5] ^= x[9];
-      x[6] ^= x[10];
-      x[7] ^= x[11];
-
-      x[4] = xsimd::rotl<7>(x[4]);
-      x[5] = xsimd::rotl<7>(x[5]);
-      x[6] = xsimd::rotl<7>(x[6]);
-      x[7] = xsimd::rotl<7>(x[7]);
-
-      x[0] += x[5];
-      x[1] += x[6];
-      x[2] += x[7];
-      x[3] += x[4];
-
-      x[15] ^= x[0];
-      x[12] ^= x[1];
-      x[13] ^= x[2];
-      x[14] ^= x[3];
-
-      x[15] = xsimd::rotl<16>(x[15]);
-      x[12] = xsimd::rotl<16>(x[12]);
-      x[13] = xsimd::rotl<16>(x[13]);
-      x[14] = xsimd::rotl<16>(x[14]);
-
-      x[10] += x[15];
-      x[11] += x[12];
-      x[8] += x[13];
-      x[9] += x[14];
-
-      x[5] ^= x[10];
-      x[6] ^= x[11];
-      x[7] ^= x[8];
-      x[4] ^= x[9];
-
-      x[5] = xsimd::rotl<12>(x[5]);
-      x[6] = xsimd::rotl<12>(x[6]);
-      x[7] = xsimd::rotl<12>(x[7]);
-      x[4] = xsimd::rotl<12>(x[4]);
-
-      x[0] += x[5];
-      x[1] += x[6];
-      x[2] += x[7];
-      x[3] += x[4];
-
-      x[15] ^= x[0];
-      x[12] ^= x[1];
-      x[13] ^= x[2];
-      x[14] ^= x[3];
-
-      x[15] = xsimd::rotl<8>(x[15]);
-      x[12] = xsimd::rotl<8>(x[12]);
-      x[13] = xsimd::rotl<8>(x[13]);
-      x[14] = xsimd::rotl<8>(x[14]);
-
-      x[10] += x[15];
-      x[11] += x[12];
-      x[8] += x[13];
-      x[9] += x[14];
-
-      x[5] ^= x[10];
-      x[6] ^= x[11];
-      x[7] ^= x[8];
-      x[4] ^= x[9];
-
-      x[5] = xsimd::rotl<7>(x[5]);
-      x[6] = xsimd::rotl<7>(x[6]);
-      x[7] = xsimd::rotl<7>(x[7]);
-      x[4] = xsimd::rotl<7>(x[4]);
-    }
+    poet::static_for<0, R / 2>([&](auto) {
+      // Column round: QR(i, i+4, i+8, i+12)
+      poet::static_for<0, 4>([&](auto I) {
+        constexpr auto i = static_cast<unsigned>(I.value);
+        quarter_round<i, i + 4, i + 8, i + 12>(x);
+      });
+      // Diagonal round: QR(i, ((i+1)%4)+4, ((i+2)%4)+8, ((i+3)%4)+12)
+      poet::static_for<0, 4>([&](auto I) {
+        constexpr auto i = static_cast<unsigned>(I.value);
+        quarter_round<i, ((i + 1) % 4) + 4, ((i + 2) % 4) + 8, ((i + 3) % 4) + 12>(x);
+      });
+    });
 
     add_original_state(x, state, lower_counter_inc, higher_counter_inc);
     transpose_into_cache(cache, x);
@@ -302,10 +203,10 @@ private:
 
   PRNG_ALWAYS_INLINE constexpr void gen_next_blocks_in_cache() noexcept {
     auto state = m_state;
-    for (auto batch = std::uint8_t{0}; batch < CACHE_BATCHCOUNT; ++batch) {
-      gen_block_batch(m_cache[batch], state);
+    poet::static_for<0, CACHE_BATCHCOUNT>([&](auto Batch) {
+      gen_block_batch(m_cache[Batch], state);
       advance_counter(state);
-    }
+    });
     m_state = state;
   }
 };
@@ -351,24 +252,35 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch) const noexcept {
   };
 }
 
+#define PRNG_CHACHA_EXTERN_TEMPLATE(R, Arch)                                                                           \
+  extern template PRNG_EXPORT ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()<Arch>(Arch) const noexcept
+
 #if PRNG_ARCH_X86_64
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::sse2);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::sse2);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::sse2);
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::avx2);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::avx2);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::avx2);
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::avx512f);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::avx512f);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::avx512f);
 #elif PRNG_ARCH_AARCH64
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::neon64);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::neon64);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::neon64);
 #  if XSIMD_WITH_SVE
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::sve>(xsimd::sve) const noexcept;
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::sve);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::sve);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::sve);
 #  endif
 #elif PRNG_ARCH_RISCV64
-extern template PRNG_EXPORT ChaChaSIMDInitResult
-ChaChaSIMDInitFunctor<20>::operator()<xsimd::detail::rvv<128>>(xsimd::detail::rvv<128>) const noexcept;
+PRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::detail::rvv<128>);
+PRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::detail::rvv<128>);
+PRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::detail::rvv<128>);
 #endif
+
+#undef PRNG_CHACHA_EXTERN_TEMPLATE
 
 } // namespace internal
 
@@ -516,6 +428,17 @@ private:
   result_cache_type m_result_cache{};
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
 };
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
+
+// Convenience aliases for common ChaCha variants.
+using ChaCha8SIMD = ChaChaSIMD<8>;
+using ChaCha12SIMD = ChaChaSIMD<12>;
+using ChaCha20SIMD = ChaChaSIMD<20>;
+
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
+using ChaCha8Native = ChaChaNative<8>;
+using ChaCha12Native = ChaChaNative<12>;
+using ChaCha20Native = ChaChaNative<20>;
 #endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 } // namespace prng

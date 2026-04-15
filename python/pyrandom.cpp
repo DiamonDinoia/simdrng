@@ -7,6 +7,8 @@
 #include <cstring>
 #include <vector>
 
+#include <poet/poet.hpp>
+
 #include "random/macros.hpp"
 #include "random/splitmix.hpp"
 #include "random/xoshiro.hpp"
@@ -72,9 +74,9 @@ public:
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
-      for (std::size_t i = 0; i < to_copy; ++i) {
+      poet::dynamic_for<4>(std::size_t{0}, to_copy, [&](std::size_t i) {
         out[produced + i] = static_cast<double>(m_cache[m_index + i] >> 11) * kInvPow53;
-      }
+      });
       m_index = static_cast<std::uint8_t>(m_index + to_copy);
       if (m_index == CACHE_SIZE) {
         m_index = 0;
@@ -95,9 +97,9 @@ public:
       }
       const std::size_t available = static_cast<std::size_t>(CACHE_SIZE) - m_index;
       const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
-      for (std::size_t i = 0; i < to_copy; ++i) {
+      poet::dynamic_for<4>(std::size_t{0}, to_copy, [&](std::size_t i) {
         out[produced + i] = static_cast<double>(m_cache[m_index + i] >> 11) * kInvPow53;
-      }
+      });
       m_index = static_cast<std::uint8_t>(m_index + to_copy);
       if (m_index == CACHE_SIZE) {
         m_index = 0;
@@ -176,9 +178,9 @@ struct alignas(64) DirectBitGen {
   }
 
   PRNG_ALWAYS_INLINE void refill() noexcept {
-    for (std::size_t i = 0; i < DCACHE; ++i) {
+    poet::dynamic_for<4>(std::size_t{0}, DCACHE, [&](std::size_t i) {
       dcache[i] = static_cast<double>(rng() >> 11) * kInvPow53;
-    }
+    });
     dpos = 0;
   }
 

@@ -26,6 +26,8 @@ Vigna.
 #include <cstdint>
 #include <limits>
 
+#include <poet/poet.hpp>
+
 #include "dispatch_arch.hpp"
 #include "macros.hpp"
 #include "xoshiro_scalar.hpp"
@@ -65,9 +67,9 @@ template <class Arch> struct XoshiroState {
       }
       rng.jump();
     }
-    for (auto i = UINT8_C(0); i < RNG_WIDTH; ++i) {
-      s[i] = simd_type::load_unaligned(states[i].data());
-    }
+    poet::static_for<0, RNG_WIDTH>([&](auto I) {
+      s[I] = simd_type::load_unaligned(states[I].data());
+    });
     for (result_type i = 0; i < thread_id; ++i) {
       mid_jump();
     }
@@ -93,14 +95,10 @@ template <class Arch> struct XoshiroState {
     return result;
   }
 
-  template <size_t... Is>
-  PRNG_ALWAYS_INLINE constexpr void unroll_populate(std::index_sequence<Is...>,
-                                                     std::array<result_type, CACHE_SIZE> &cache) noexcept {
-    (next().store_aligned(cache.data() + Is * SIMD_WIDTH), ...);
-  }
-
   PRNG_ALWAYS_INLINE constexpr void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
-    unroll_populate(std::make_index_sequence<CACHE_SIZE / SIMD_WIDTH>{}, cache);
+    poet::static_for<0, CACHE_SIZE / SIMD_WIDTH>([&](auto I) {
+      next().store_aligned(cache.data() + I * SIMD_WIDTH);
+    });
   }
 
   /**
@@ -173,9 +171,9 @@ template <class Arch> struct XoshiroState {
 
   PRNG_ALWAYS_INLINE constexpr std::array<result_type, RNG_WIDTH> getState(const std::size_t index) const noexcept {
     std::array<result_type, RNG_WIDTH> state{};
-    for (auto i = UINT8_C(0); i < RNG_WIDTH; ++i) {
-      state[i] = s[i].get(index);
-    }
+    poet::static_for<0, RNG_WIDTH>([&](auto I) {
+      state[I] = s[I].get(index);
+    });
     return state;
   }
 };
