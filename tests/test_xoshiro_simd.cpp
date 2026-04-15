@@ -5,6 +5,31 @@
 #include <catch2/catch_all.hpp>
 
 static constexpr auto tests = 1 << 12; // 4096
+
+TEST_CASE("SIMD DISPATCH JUMP", "[xoshiro256++]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  prng::XoshiroSIMD simd(seed);
+  prng::XoshiroSIMD simd2(seed);
+  // Both should produce the same output
+  for (int i = 0; i < 1024; ++i) {
+    REQUIRE(simd() == simd2());
+  }
+  // After jump, they should diverge
+  simd.jump();
+  REQUIRE(simd() != simd2());
+}
+
+TEST_CASE("SIMD DISPATCH MID JUMP", "[xoshiro256++]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  prng::XoshiroSIMD simd(seed);
+  prng::XoshiroSIMD simd2(seed);
+  simd.mid_jump();
+  REQUIRE(simd() != simd2());
+}
+
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 constexpr auto SIMD_WIDTH = xsimd::simd_type<prng::XoshiroNative::result_type>::size;
 
 TEST_CASE("SEED", "[xoshiro256++]") {
@@ -91,29 +116,6 @@ TEST_CASE("MID JUMP", "[xoshiro256++]") {
   }
 }
 
-TEST_CASE("SIMD DISPATCH JUMP", "[xoshiro256++]") {
-  const auto seed = std::random_device()();
-  INFO("SEED: " << seed);
-  prng::XoshiroSIMD simd(seed);
-  prng::XoshiroSIMD simd2(seed);
-  // Both should produce the same output
-  for (int i = 0; i < 1024; ++i) {
-    REQUIRE(simd() == simd2());
-  }
-  // After jump, they should diverge
-  simd.jump();
-  REQUIRE(simd() != simd2());
-}
-
-TEST_CASE("SIMD DISPATCH MID JUMP", "[xoshiro256++]") {
-  const auto seed = std::random_device()();
-  INFO("SEED: " << seed);
-  prng::XoshiroSIMD simd(seed);
-  prng::XoshiroSIMD simd2(seed);
-  simd.mid_jump();
-  REQUIRE(simd() != simd2());
-}
-
 TEST_CASE("GENERATE DOUBLE", "[xoshiro256++]") {
   const auto seed = std::random_device()();
   INFO("SEED: " << seed);
@@ -138,3 +140,4 @@ TEST_CASE("GENERATE DOUBLE", "[xoshiro256++]") {
     }
   }
 }
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE

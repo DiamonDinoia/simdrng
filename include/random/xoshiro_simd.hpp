@@ -26,8 +26,7 @@ Vigna.
 #include <cstdint>
 #include <limits>
 
-#include <xsimd/xsimd.hpp>
-
+#include "dispatch_arch.hpp"
 #include "macros.hpp"
 #include "xoshiro_scalar.hpp"
 
@@ -218,13 +217,26 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
   };
 }
 
+#if PRNG_ARCH_X86_64
 extern template PRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
 extern template PRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
 extern template PRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
+#elif PRNG_ARCH_AARCH64
+extern template PRNG_EXPORT XoshiroSIMDInitResult
+XoshiroSIMDInitFunctor::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
+#  if XSIMD_WITH_SVE
+extern template PRNG_EXPORT XoshiroSIMDInitResult
+XoshiroSIMDInitFunctor::operator()<xsimd::sve>(xsimd::sve) const noexcept;
+#  endif
+#elif PRNG_ARCH_RISCV64
+extern template PRNG_EXPORT XoshiroSIMDInitResult
+XoshiroSIMDInitFunctor::operator()<xsimd::detail::rvv<128>>(xsimd::detail::rvv<128>) const noexcept;
+#endif
 
 } // namespace internal
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 /**
  * XoshiroNative: uses the best architecture available at compile time.
  * Zero indirection — direct calls to XoshiroState methods.
@@ -270,6 +282,7 @@ private:
   State m_state{};
   std::uint8_t m_index{0};
 };
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 /**
  * XoshiroSIMD: runtime SIMD dispatch via inline union + function pointers.

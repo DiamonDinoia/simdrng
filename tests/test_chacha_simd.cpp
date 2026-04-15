@@ -5,6 +5,7 @@
 #include <random/chacha.hpp>
 #include <random/chacha_simd.hpp>
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 using ChaCha20Reference = prng::ChaCha<20>;
 using ChaCha20SIMD = prng::ChaChaNative<20>;
 
@@ -54,5 +55,24 @@ TEST_CASE("COUNTER OVERFLOW", "[chacha]") {
       REQUIRE(chaCha20SIMD.getState() == chaCha20Reference.getState());
       REQUIRE(chaCha20SIMD.block() == chaCha20Reference.block());
     }
+  }
+}
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
+
+TEST_CASE("SIMD DISPATCH", "[chacha]") {
+  auto seed = std::random_device{}();
+  INFO("SEED: " << seed);
+  std::mt19937 rng32(seed);
+  std::mt19937_64 rng64(seed);
+  std::array<prng::ChaChaSIMD<20>::matrix_word, 8> key;
+  for (int i = 0; i < 8; i++) {
+    key[i] = rng32();
+  }
+  prng::ChaChaSIMD<20>::input_word counter = rng64(), nonce = rng64();
+
+  prng::ChaChaSIMD<20> a(key, counter, nonce);
+  prng::ChaChaSIMD<20> b(key, counter, nonce);
+  for (int i = 0; i < 1024; ++i) {
+    REQUIRE(a() == b());
   }
 }

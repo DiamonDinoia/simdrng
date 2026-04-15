@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <limits>
 #include <type_traits>
-#include <xsimd/xsimd.hpp>
 
+#include "dispatch_arch.hpp"
 #include "macros.hpp"
 
 namespace prng {
@@ -44,7 +44,8 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
   static constexpr std::uint8_t BLOCK_SEGMENTCOUNT =
       SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(MATRIX_WORDCOUNT / SIMD_WIDTH) : 0;
   static constexpr std::uint8_t cache_batchcount() noexcept {
-    if constexpr (std::is_base_of_v<xsimd::avx512f, Arch>) {
+    // Use 2 batches for 512-bit+ SIMD (fewer but wider blocks per batch).
+    if constexpr (simd_type::size >= 16) {
       return 2;
     } else {
       return 1;
@@ -350,12 +351,24 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch) const noexcept {
   };
 }
 
+#if PRNG_ARCH_X86_64
 extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
 extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
 extern template PRNG_EXPORT ChaChaSIMDInitResult
 ChaChaSIMDInitFunctor<20>::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
+#elif PRNG_ARCH_AARCH64
+extern template PRNG_EXPORT ChaChaSIMDInitResult
+ChaChaSIMDInitFunctor<20>::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
+#  if XSIMD_WITH_SVE
+extern template PRNG_EXPORT ChaChaSIMDInitResult
+ChaChaSIMDInitFunctor<20>::operator()<xsimd::sve>(xsimd::sve) const noexcept;
+#  endif
+#elif PRNG_ARCH_RISCV64
+extern template PRNG_EXPORT ChaChaSIMDInitResult
+ChaChaSIMDInitFunctor<20>::operator()<xsimd::detail::rvv<128>>(xsimd::detail::rvv<128>) const noexcept;
+#endif
 
 } // namespace internal
 
@@ -390,7 +403,7 @@ public:
   explicit PRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter,
                                           const input_word nonce) {
     auto result =
-        xsimd::dispatch<xsimd::arch_list<xsimd::avx512f, xsimd::avx2, xsimd::sse2>>(
+        xsimd::dispatch<dispatch_arch_list>(
             internal::ChaChaSIMDInitFunctor<R>{m_state.data, key, counter, nonce})();
     m_next_block = result.next_block;
     m_get_state = result.get_state;
@@ -446,6 +459,7 @@ private:
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
 };
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 /**
  * ChaChaNative: uses the best architecture available at compile time.
  * Zero indirection — direct calls to ChaChaState methods.
@@ -502,5 +516,6 @@ private:
   result_cache_type m_result_cache{};
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
 };
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 } // namespace prng

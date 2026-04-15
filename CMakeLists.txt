@@ -9,7 +9,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 
 set(CPM_DOWNLOAD_VERSION 0.42.0)
-set(XSIMD_DOWNLOAD_VERSION 14.0.0)
+set(XSIMD_DOWNLOAD_VERSION 1e7c3b9e37a4bba260f232c6561fa062f3df5f16)
 
 option(ENABLE_TESTS "Enable tests" ON)
 option(ENABLE_PYTHON "Enable Python bindings" ON)
@@ -90,20 +90,43 @@ set_target_properties(random PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
 )
+# Suppress GCC 15 -Wtemplate-body: xsimd template definitions reference
+# SIMD intrinsics that don't exist without a SIMD arch, but these templates
+# are only instantiated in dispatch TUs compiled with the correct -march flags.
+add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
 target_compile_options(random PRIVATE ${COMPILE_OPTIONS})
+target_compile_options(random PUBLIC ${TEMPLATE_BODY_FLAGS})
 target_link_options(random PRIVATE ${LINK_OPTIONS})
 target_compile_features(random PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
 target_compile_features(random INTERFACE cxx_std_20)
 
+# Architecture-specific SIMD dispatch variants.
+# Each variant is compiled with flags that enable a specific SIMD level;
+# xsimd::dispatch picks the best available at runtime.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(PRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
+    set(PRNG_DISPATCH_FLAGS_x86_64     -march=x86-64   -mtune=generic)
+    set(PRNG_DISPATCH_FLAGS_x86_64_v3  -march=x86-64-v3 -mtune=generic)
+    set(PRNG_DISPATCH_FLAGS_x86_64_v4  -march=x86-64-v4 -mtune=generic)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    set(PRNG_DISPATCH_VARIANTS "neon64")
+    set(PRNG_DISPATCH_FLAGS_neon64 "")  # NEON is baseline on aarch64
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64$")
+    set(PRNG_DISPATCH_VARIANTS "rvv")
+    set(PRNG_DISPATCH_FLAGS_rvv -march=rv64gcv -mrvv-vector-bits=zvl)
+else ()
+    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif ()
+
 foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
-    foreach (MARCH_VERSION IN ITEMS x86-64 x86-64-v3 x86-64-v4)
-        string(REPLACE "-" "_" TARGET_SUFFIX "${MARCH_VERSION}")
+    foreach (VARIANT IN LISTS PRNG_DISPATCH_VARIANTS)
+        string(REPLACE "-" "_" TARGET_SUFFIX "${VARIANT}")
         set(SIMD_SOURCE_TARGET "${PRNG_TYPE}_simd_source_${TARGET_SUFFIX}")
 
         add_library(${SIMD_SOURCE_TARGET} OBJECT src/${PRNG_TYPE}_simd_dispatch.cpp)
         target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd)
-        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} -march=${MARCH_VERSION} -mtune=generic)
+        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
         set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
             POSITION_INDEPENDENT_CODE ON
             INTERPROCEDURAL_OPTIMIZATION_RELEASE ON

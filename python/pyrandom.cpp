@@ -33,6 +33,7 @@ private:
   SplitMix gen;
 };
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 class PyXoshiroNative {
 public:
   PRNG_ALWAYS_INLINE explicit PyXoshiroNative(uint64_t seed) noexcept : rng(seed) {}
@@ -48,6 +49,7 @@ public:
 private:
   XoshiroNative rng;
 };
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 class PyXoshiroSIMD : public XoshiroSIMD {
 public:
@@ -244,6 +246,7 @@ PRNG_ALWAYS_INLINE nb::object make_xoshiro_simd_bitgenerator(uint64_t seed) {
   return make_direct_bitgenerator<XoshiroSIMD>(seed);
 }
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 PRNG_ALWAYS_INLINE nb::object make_xoshiro_native_bitgenerator(uint64_t seed) {
   return make_direct_bitgenerator<XoshiroNative>(seed);
 }
@@ -253,6 +256,7 @@ PRNG_ALWAYS_INLINE nb::object make_xoshiro_native_bitgenerator(uint64_t seed, ui
 PRNG_ALWAYS_INLINE nb::object make_xoshiro_native_bitgenerator(uint64_t seed, uint64_t thread, uint64_t cluster) {
   return make_direct_bitgenerator<XoshiroNative>(seed, thread, cluster);
 }
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 PRNG_ALWAYS_INLINE void fill_xoshiro_simd_array(uint64_t seed, nb::ndarray<nb::numpy, double, nb::ndim<1>, nb::c_contig> arr) {
   nb::gil_scoped_release release;
@@ -283,6 +287,7 @@ NB_MODULE(pyrandom_ext, m) {
       .def("get_state", &PySplitMix::get_state)
       .def("set_state", &PySplitMix::set_state);
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
   nb::class_<PyXoshiroNative>(m, "XoshiroNative")
       .def(nb::init<uint64_t>())
       .def(nb::init<uint64_t, uint64_t>())
@@ -291,6 +296,7 @@ NB_MODULE(pyrandom_ext, m) {
       .def("uniform", &PyXoshiroNative::uniform)
       .def("jump", &PyXoshiroNative::jump)
       .def("long_jump", &PyXoshiroNative::long_jump);
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
   nb::class_<PyXoshiroSIMD>(m, "XoshiroSIMD")
       .def(nb::init<uint64_t>())
@@ -316,6 +322,7 @@ NB_MODULE(pyrandom_ext, m) {
   m.def("create_xoshiro_bit_generator", &make_xoshiro_bitgenerator, nb::arg("seed"),
         "Return a NumPy BitGenerator backed by Xoshiro");
 
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
   m.def("create_xoshiro_native_bit_generator",
         nb::overload_cast<uint64_t>(&make_xoshiro_native_bitgenerator),
         nb::arg("seed"),
@@ -330,6 +337,7 @@ NB_MODULE(pyrandom_ext, m) {
         nb::overload_cast<uint64_t, uint64_t, uint64_t>(&make_xoshiro_native_bitgenerator),
         nb::arg("seed"), nb::arg("thread"), nb::arg("cluster"),
         "Return a NumPy BitGenerator backed by XoshiroNative (seed, thread, cluster)");
+#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
   m.def("fill_xoshiro_simd_array", &fill_xoshiro_simd_array, nb::arg("seed"), nb::arg("out"),
         "Fill a 1D numpy.ndarray[float64, C-contiguous] using XoshiroSIMD core bulk-fill (releases GIL)");
