@@ -97,29 +97,30 @@ def bench_per_sample(repeat: int = 100_000) -> None:
 
 
 def bench_bulk_vs_generator(size: int = 10_000_000, repeat: int = 10) -> None:
-    _header(f"3. Bulk fill vs Generator path (N={size:_})")
+    _header(f"3. pyrandom.random() vs NumPy.random() (N={size:_})")
     out = np.empty(size, dtype=np.float64)
-    generators = {
-        "XoshiroSIMD": pyrandom.XoshiroSIMD(1234),
-        "XoshiroNative": pyrandom.XoshiroNative(1234),
-    }
-    for name, rng in generators.items():
-        # Generator path
-        def run_gen(r=rng, o=out):
+
+    # pyrandom (transparent C++ bulk fill via Generator subclass)
+    for name, rng in [
+        ("XoshiroSIMD", pyrandom.XoshiroSIMD(1234)),
+        ("XoshiroNative", pyrandom.XoshiroNative(1234)),
+    ]:
+        def run(r=rng, o=out):
             r.random(size, out=o)
 
-        t_gen = _bench(run_gen, repeat=repeat)
+        t = _bench(run, repeat=repeat)
+        print(f"  {name:20s}: {t:.3f}s  ({size / t / 1e6:8.2f} M/s)")
 
-        # Bulk fill path
-        def run_bulk(r=rng, o=out):
-            r.bit_generator.fill_uniform(o)
+    # NumPy (standard per-sample callback path)
+    for name, rng in [
+        ("PCG64 (numpy)", np.random.Generator(np.random.PCG64(1234))),
+        ("default_rng", np.random.default_rng(1234)),
+    ]:
+        def run(r=rng, o=out):
+            r.random(size, out=o)
 
-        t_bulk = _bench(run_bulk, repeat=repeat)
-        speedup = t_gen / t_bulk if t_bulk > 0 else float("inf")
-        print(
-            f"  {name:20s}: gen={t_gen:.3f}s  bulk={t_bulk:.3f}s  "
-            f"speedup={speedup:.2f}x",
-        )
+        t = _bench(run, repeat=repeat)
+        print(f"  {name:20s}: {t:.3f}s  ({size / t / 1e6:8.2f} M/s)")
 
 
 # ── 4. State serialization cost ────────────────────────────────────────────
@@ -206,6 +207,30 @@ def bench_integers(size: int = 10_000_000, repeat: int = 10) -> None:
         print(f"  {name:25s}: {best:.3f}s  ({rate / 1e6:8.2f} M samples/s)")
 
 
+# ── 7. Float32 throughput ───────────────────────────────────────────────────
+
+
+def bench_float32(size: int = 100_000_000, repeat: int = 10) -> None:
+    _header(f"7. Float32 throughput (N={size:_}, 2 samples per uint64)")
+    out = np.empty(size, dtype=np.float32)
+    generators: dict[str, Callable[[], np.random.Generator]] = {
+        "XoshiroSIMD": lambda: pyrandom.XoshiroSIMD(1234),
+        "XoshiroNative": lambda: pyrandom.XoshiroNative(1234),
+        "ChaCha8": lambda: pyrandom.ChaCha8(1234),
+        "PCG64": lambda: np.random.Generator(np.random.PCG64(1234)),
+        "default_rng": lambda: np.random.default_rng(1234),
+    }
+    for name, factory in generators.items():
+        rng = factory()
+
+        def run(r=rng, o=out):
+            r.random(size, dtype=np.float32, out=o)
+
+        best = _bench(run, repeat=repeat)
+        rate = size / best
+        print(f"  {name:20s}: {best:8.3f} s  ({rate / 1e6:8.2f} M samples/s)")
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 
@@ -218,6 +243,7 @@ def main() -> None:
     bench_serialization()
     bench_scaling()
     bench_integers()
+    bench_float32()
 
 
 if __name__ == "__main__":
