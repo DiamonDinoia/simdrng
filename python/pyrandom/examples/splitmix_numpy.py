@@ -1,21 +1,24 @@
+"""SplitMix generator with NumPy."""
+
 import numpy as np
 import pyrandom
 
 
 def main() -> None:
     rng = pyrandom.SplitMix(123)
-    a = rng.random((3, 4))
-    print("uniform:", a)
 
-    b = np.empty((1000,), dtype=np.float32)
-    rng.random(b.shape, dtype=np.float32, out=b)
-    print("uniform float32 first 5:", b[:5])
+    print("uniform:", rng.random((3, 4)))
+    print("integers:", rng.integers(0, 10, size=(2, 5)))
+    print("normal:", rng.normal(0.0, 1.0, size=5))
 
-    c = rng.integers(0, 10, size=(2, 5))
-    print("integers:\n", c)
+    # State serialization
+    state = rng.bit_generator.state
+    a = rng.random(10)
+    rng.bit_generator.state = state
+    b = rng.random(10)
+    np.testing.assert_array_equal(a, b)
+    print("state roundtrip: OK")
 
-    d = rng.normal(0.0, 1.0, size=(3, 3))
-    print("normal:\n", d)
 
 if __name__ == "__main__":
     main()
