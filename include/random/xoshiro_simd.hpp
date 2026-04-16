@@ -176,6 +176,21 @@ template <class Arch> struct XoshiroState {
     });
     return state;
   }
+
+  void get_flat_state(result_type *out) const noexcept {
+    for (std::uint8_t reg = 0; reg < RNG_WIDTH; ++reg)
+      for (std::uint8_t lane = 0; lane < SIMD_WIDTH; ++lane)
+        out[reg * SIMD_WIDTH + lane] = s[reg].get(lane);
+  }
+
+  void set_flat_state(const result_type *in) noexcept {
+    for (std::uint8_t reg = 0; reg < RNG_WIDTH; ++reg) {
+      std::array<result_type, SIMD_WIDTH> vals;
+      for (std::uint8_t lane = 0; lane < SIMD_WIDTH; ++lane)
+        vals[lane] = in[reg * SIMD_WIDTH + lane];
+      s[reg] = simd_type::load_unaligned(vals.data());
+    }
+  }
 };
 
 /**
@@ -184,10 +199,16 @@ template <class Arch> struct XoshiroState {
 struct XoshiroSIMDInitResult {
   using populate_fn = void (*)(void *, std::array<std::uint64_t, 256> &) noexcept;
   using jump_fn = void (*)(void *) noexcept;
+  using get_state_fn = void (*)(const void *, std::uint64_t *) noexcept;
+  using set_state_fn = void (*)(void *, const std::uint64_t *) noexcept;
+  using simd_width_fn = std::uint8_t (*)() noexcept;
   populate_fn populate_cache;
   jump_fn jump;
   jump_fn mid_jump;
   jump_fn long_jump;
+  get_state_fn get_state;
+  set_state_fn set_state;
+  simd_width_fn simd_width;
 };
 
 /**
@@ -212,6 +233,9 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
       +[](void *s) noexcept { static_cast<State *>(s)->jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->mid_jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->long_jump(); },
+      +[](const void *s, std::uint64_t *out) noexcept { static_cast<const State *>(s)->get_flat_state(out); },
+      +[](void *s, const std::uint64_t *in) noexcept { static_cast<State *>(s)->set_flat_state(in); },
+      +[]() noexcept -> std::uint8_t { return State::SIMD_WIDTH; },
   };
 }
 
@@ -275,6 +299,15 @@ public:
   PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_state.mid_jump(); }
   PRNG_ALWAYS_INLINE void long_jump() noexcept { m_state.long_jump(); }
 
+  void get_flat_state(result_type *out) const noexcept { m_state.get_flat_state(out); }
+  void set_flat_state(const result_type *in) noexcept { m_state.set_flat_state(in); }
+  static constexpr std::uint8_t simd_width() noexcept { return State::SIMD_WIDTH; }
+
+  std::uint8_t cache_index() const noexcept { return m_index; }
+  void set_cache_index(std::uint8_t idx) noexcept { m_index = idx; }
+  const std::array<result_type, CACHE_SIZE> &cache() const noexcept { return m_cache; }
+  std::array<result_type, CACHE_SIZE> &cache() noexcept { return m_cache; }
+
 private:
   alignas(State::simd_type::arch_type::alignment()) std::array<result_type, CACHE_SIZE> m_cache{};
   State m_state{};
@@ -309,10 +342,22 @@ public:
   PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
   PRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
 
+  void get_flat_state(result_type *out) const noexcept { m_get_state(m_state.data, out); }
+  void set_flat_state(const result_type *in) noexcept { m_set_state(m_state.data, in); }
+  std::uint8_t simd_width() const noexcept { return m_simd_width(); }
+
+  std::uint8_t cache_index() const noexcept { return m_index; }
+  void set_cache_index(std::uint8_t idx) noexcept { m_index = idx; }
+  const std::array<result_type, std::numeric_limits<std::uint8_t>::max() + 1> &cache() const noexcept { return m_cache; }
+  std::array<result_type, std::numeric_limits<std::uint8_t>::max() + 1> &cache() noexcept { return m_cache; }
+
 protected:
   static constexpr std::uint16_t CACHE_SIZE = std::numeric_limits<std::uint8_t>::max() + 1;
   using populate_fn = void (*)(void *, std::array<result_type, CACHE_SIZE> &) noexcept;
   using jump_fn = void (*)(void *) noexcept;
+  using get_state_fn = void (*)(const void *, result_type *) noexcept;
+  using set_state_fn = void (*)(void *, const result_type *) noexcept;
+  using simd_width_fn = std::uint8_t (*)() noexcept;
 
   // Raw byte storage for the arch-specific XoshiroState.
   // Typed union is not viable: xsimd batch types have different sizeof
@@ -330,6 +375,9 @@ protected:
   jump_fn m_jump = nullptr;
   jump_fn m_mid_jump = nullptr;
   jump_fn m_long_jump = nullptr;
+  get_state_fn m_get_state = nullptr;
+  set_state_fn m_set_state = nullptr;
+  simd_width_fn m_simd_width = nullptr;
   std::uint8_t m_index{0};
 };
 

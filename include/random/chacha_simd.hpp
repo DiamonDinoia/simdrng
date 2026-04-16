@@ -218,8 +218,12 @@ struct ChaChaSIMDInitResult {
   using matrix_type = std::array<std::uint32_t, 16>;
   using next_block_fn = matrix_type (*)(void *) noexcept;
   using get_state_fn = matrix_type (*)(const void *, bool) noexcept;
+  using set_state_fn = void (*)(void *, const matrix_type &) noexcept;
+  using get_cache_index_fn = std::uint8_t (*)(const void *) noexcept;
   next_block_fn next_block;
   get_state_fn get_state;
+  set_state_fn set_state;
+  get_cache_index_fn get_cache_index;
   std::size_t simd_size;
 };
 
@@ -247,6 +251,14 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch) const noexcept {
       },
       +[](const void *s, bool prev) noexcept -> ChaChaSIMDInitResult::matrix_type {
         return static_cast<const State *>(s)->getState(prev);
+      },
+      +[](void *s, const ChaChaSIMDInitResult::matrix_type &matrix) noexcept {
+        auto *state = static_cast<State *>(s);
+        state->m_state = matrix;
+        state->m_cache_index = State::CACHE_BLOCKCOUNT;
+      },
+      +[](const void *s) noexcept -> std::uint8_t {
+        return static_cast<const State *>(s)->m_cache_index;
       },
       std::size_t{State::SIMD_WIDTH},
   };
@@ -312,6 +324,25 @@ public:
     return std::bit_cast<result_cache_type>(block);
   }
 
+  static constexpr std::array<matrix_word, KEY_WORDCOUNT> seed_to_key(result_type seed) noexcept {
+    std::array<matrix_word, KEY_WORDCOUNT> key{};
+    // SplitMix64 expansion: 1 uint64 seed -> 4 uint64 -> 8 uint32
+    auto state = seed;
+    for (std::uint8_t i = 0; i < 4; ++i) {
+      state += 0x9e3779b97f4a7c15ULL;
+      auto z = state;
+      z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+      z = z ^ (z >> 31);
+      key[i * 2] = static_cast<matrix_word>(z);
+      key[i * 2 + 1] = static_cast<matrix_word>(z >> 32);
+    }
+    return key;
+  }
+
+  explicit PRNG_ALWAYS_INLINE ChaChaSIMD(result_type seed, const input_word counter = 0, const input_word nonce = 0)
+      : ChaChaSIMD(seed_to_key(seed), counter, nonce) {}
+
   explicit PRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter,
                                           const input_word nonce) {
     auto result =
@@ -319,6 +350,8 @@ public:
             internal::ChaChaSIMDInitFunctor<R>{m_state.data, key, counter, nonce})();
     m_next_block = result.next_block;
     m_get_state = result.get_state;
+    m_set_state = result.set_state;
+    m_get_cache_index = result.get_cache_index;
     m_simd_size = result.simd_size;
   }
 
@@ -347,11 +380,26 @@ public:
     return m_get_state(m_state.data, m_result_index < m_result_cache.size());
   }
 
+  matrix_type getStateForSerde() const noexcept {
+    return m_get_state(m_state.data, false);
+  }
+
+  void setState(const matrix_type &matrix) noexcept {
+    m_set_state(m_state.data, matrix);
+  }
+
+  const result_cache_type &result_cache() const noexcept { return m_result_cache; }
+  void set_result_cache(const result_cache_type &cache) noexcept { m_result_cache = cache; }
+  std::uint8_t result_index() const noexcept { return m_result_index; }
+  void set_result_index(std::uint8_t idx) noexcept { m_result_index = idx; }
+
   PRNG_ALWAYS_INLINE size_t getSIMDSize() const noexcept { return m_simd_size; }
 
 private:
   using next_block_fn = internal::ChaChaSIMDInitResult::next_block_fn;
   using get_state_fn = internal::ChaChaSIMDInitResult::get_state_fn;
+  using set_state_fn = internal::ChaChaSIMDInitResult::set_state_fn;
+  using get_cache_index_fn = internal::ChaChaSIMDInitResult::get_cache_index_fn;
 
   // Raw byte storage for the arch-specific ChaChaState.
   // Typed union is not viable: xsimd batch types have different sizeof
@@ -366,6 +414,8 @@ private:
   alignas(64) StateStorage m_state;
   next_block_fn m_next_block = nullptr;
   get_state_fn m_get_state = nullptr;
+  set_state_fn m_set_state = nullptr;
+  get_cache_index_fn m_get_cache_index = nullptr;
   std::size_t m_simd_size = 0;
   result_cache_type m_result_cache{};
   std::uint8_t m_result_index = static_cast<std::uint8_t>(m_result_cache.size());
@@ -391,6 +441,9 @@ public:
 
   static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
   static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+
+  explicit ChaChaNative(result_type seed, const input_word counter = 0, const input_word nonce = 0)
+      : ChaChaNative(ChaChaSIMD<R>::seed_to_key(seed), counter, nonce) {}
 
   ChaChaNative(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter, const input_word nonce)
       : m_state(key, counter, nonce) {}
@@ -419,6 +472,20 @@ public:
   PRNG_ALWAYS_INLINE constexpr matrix_type getState() const noexcept {
     return m_state.getState(m_result_index < m_result_cache.size());
   }
+
+  matrix_type getStateForSerde() const noexcept {
+    return m_state.getState(false);
+  }
+
+  void setState(const matrix_type &matrix) noexcept {
+    m_state.m_state = matrix;
+    m_state.m_cache_index = State::CACHE_BLOCKCOUNT;
+  }
+
+  const result_cache_type &result_cache() const noexcept { return m_result_cache; }
+  void set_result_cache(const result_cache_type &cache) noexcept { m_result_cache = cache; }
+  std::uint8_t result_index() const noexcept { return m_result_index; }
+  void set_result_index(std::uint8_t idx) noexcept { m_result_index = idx; }
 
   PRNG_ALWAYS_INLINE size_t getSIMDSize() const noexcept { return std::size_t{State::SIMD_WIDTH}; }
 
