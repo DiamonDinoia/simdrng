@@ -223,7 +223,8 @@ jobs:
         # stock runner version; lcov's geninfo refuses the mismatch. Point
         # it at the matching gcov-14.
         run: |
-          lcov --gcov-tool "$(command -v gcov-14)" --ignore-errors mismatch \
+          lcov --gcov-tool "$(command -v gcov-14)" \
+               --ignore-errors mismatch,source,gcov \
                --directory build/cov --capture --output-file coverage.info
           lcov --ignore-errors unused --remove coverage.info \
                '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
