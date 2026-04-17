@@ -38,4 +38,5 @@ jobs:
       - name: Run with CodSpeed
         uses: CodSpeedHQ/action@v4
         with:
+          mode: instrumentation
           run: ./build/codspeed/tests/benchmarks
