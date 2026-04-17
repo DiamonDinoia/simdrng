@@ -3,10 +3,10 @@ requires = ["scikit-build-core >=0.10", "nanobind >=2.5", "numpy"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "pyrandom"
-version = "0.1.0"
-description = "Python bindings for the random library"
-authors = [{ name = "Your Name", email = "you@example.com" }]
+name = "simdrng"
+version = "0.0.0"
+description = "Vectorized random number generators (Xoshiro / SplitMix / ChaCha / Philox) with a numpy.random.Generator-compatible Python API"
+authors = [{ name = "Marco Barbone", email = "mbarbone@flatironinstitute.org" }]
 license = "MIT"
 readme = "../readme.md"
 requires-python = ">=3.10"
@@ -20,8 +20,21 @@ cmake.minimum-version = "3.15"
 cmake.build-type = "Release"
 cmake.source-dir = ".."
 build-dir = "build/{wheel_tag}"
-cmake.targets = ["pyrandom_ext"]
+cmake.targets = ["simdrng_ext"]
 cmake.define = {"ENABLE_PYTHON" = "ON"}
 wheel.py-api = "cp312"
-wheel.packages = ["pyrandom"]
-wheel.exclude = ["pyrandom/tests", "pyrandom/examples", "pyrandom/benchmarks"]
+wheel.packages = ["simdrng"]
+wheel.exclude = ["simdrng/tests", "simdrng/examples", "simdrng/benchmarks"]
+
+[tool.cibuildwheel]
+test-requires = ["pytest", "scipy"]
+# Run the in-tree pytest suite against the installed wheel.
+test-command = "pytest {project}/python/simdrng/tests"
+build-verbosity = 1
+
+[tool.cibuildwheel.linux]
+before-all = "yum install -y libpfm-devel || (apt-get update && apt-get install -y libpfm4-dev) || true"
+
+[tool.cibuildwheel.macos]
+environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }
+

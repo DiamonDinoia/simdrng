@@ -1,272 +1,185 @@
-#include <iostream>
-#include <nanobench.h>
+// Google Benchmark harness covering every generator in simdrng.
+//
+// Hardware counters (IPC, cache misses, branch misses) are available on
+// Linux when Google Benchmark is built with BENCHMARK_ENABLE_LIBPFM=ON
+// and libpfm4-dev is installed. Invoke:
+//
+//   ./benchmarks --benchmark_perf_counters=CYCLES,INSTRUCTIONS,\
+//                CACHE-MISSES,BRANCH-MISSES,BRANCHES \
+//                --benchmark_format=json --benchmark_out=bench.json
+//
+// IPC = INSTRUCTIONS / CYCLES is computed downstream in
+// scripts/analyze_bench.py.
+
+#include <array>
+#include <cstdint>
 #include <random>
+
+#include <benchmark/benchmark.h>
+
 #include <random/chacha.hpp>
 #include <random/chacha_simd.hpp>
 #include <random/philox.hpp>
 #include <random/philox_simd.hpp>
+#include <random/xoshiro.hpp>
 #include <random/xoshiro_simd.hpp>
 
 #include "xoshiro256plusplus.c"
 
-static constexpr auto iterations = 1;
-
 namespace {
 
-ankerl::nanobench::Bench make_bench(const char *title, const char *unit,
-                                    double batch) {
-  using namespace std::chrono_literals;
+constexpr std::uint64_t kSeed = 42;
 
-  return ankerl::nanobench::Bench()
-    .title(title)
-    .unit(unit)
-    .batch(batch)
-    .minEpochTime(50ms)
-    .minEpochIterations(2000)
-    .relative(true);
-}
-
-} // namespace
-
-int main() {
-  volatile const auto seed = 42;
-  std::cout << "SEED: " << seed << std::endl;
-  prng::XoshiroScalar reference(seed);
-  prng::XoshiroSIMD dispatch(seed);
-  using ScalarChaCha20 = prng::ChaCha<20>;
-  using SimdChaCha20 = prng::ChaChaSIMD<20>;
-  constexpr std::array<ScalarChaCha20::matrix_word, 8> chacha_key = {
+constexpr std::array<prng::ChaCha<20>::matrix_word, 8> kChaChaKey = {
     0x03020100u, 0x07060504u, 0x0b0a0908u, 0x0f0e0d0cu,
     0x13121110u, 0x17161514u, 0x1b1a1918u, 0x1f1e1d1cu,
-  };
-  constexpr ScalarChaCha20::input_word chacha_counter = 0x0706050403020100ULL;
-  constexpr ScalarChaCha20::input_word chacha_nonce = 0x0f0e0d0c0b0a0908ULL;
-  std::cout << "ChaCha SIMD width: " << SimdChaCha20({}, 0, 0).getSIMDSize() << std::endl;
-  ScalarChaCha20 chacha_scalar_uint64(chacha_key, chacha_counter, chacha_nonce);
-  SimdChaCha20 chacha_simd_uint64(chacha_key, chacha_counter, chacha_nonce);
-  ScalarChaCha20 chacha_scalar_double(chacha_key, chacha_counter, chacha_nonce);
-  SimdChaCha20 chacha_simd_double(chacha_key, chacha_counter, chacha_nonce);
-  ScalarChaCha20 chacha_scalar_dist(chacha_key, chacha_counter, chacha_nonce);
-  SimdChaCha20 chacha_simd_dist(chacha_key, chacha_counter, chacha_nonce);
+};
+constexpr prng::ChaCha<20>::input_word kChaChaCounter = 0x0706050403020100ULL;
+constexpr prng::ChaCha<20>::input_word kChaChaNonce   = 0x0f0e0d0c0b0a0908ULL;
 
-  // Philox generators
-  using ScalarPhilox4x32 = prng::Philox<4, 32, 10>;
-  using SimdPhilox4x32 = prng::PhiloxSIMD<4, 32, 10>;
-  using ScalarPhilox4x64 = prng::Philox<4, 64, 10>;
-  using SimdPhilox4x64 = prng::PhiloxSIMD<4, 64, 10>;
-  std::cout << "Philox SIMD width: " << SimdPhilox4x32(0).getSIMDSize() << std::endl;
-  ScalarPhilox4x32 philox4x32_scalar(seed);
-  SimdPhilox4x32 philox4x32_simd(seed);
-  ScalarPhilox4x32 philox4x32_scalar_double(seed);
-  SimdPhilox4x32 philox4x32_simd_double(seed);
-  ScalarPhilox4x64 philox4x64_scalar(seed);
-  SimdPhilox4x64 philox4x64_simd(seed);
-  ScalarPhilox4x64 philox4x64_scalar_double(seed);
-  SimdPhilox4x64 philox4x64_simd_double(seed);
+// ---------- scalar / dispatch uint64 generation ----------------------------
 
-  s[0] = reference.getState()[0];
-  s[1] = reference.getState()[1];
-  s[2] = reference.getState()[2];
-  s[3] = reference.getState()[3];
+static void BM_ReferenceXoshiro_u64(benchmark::State& bench) {
+  // The reference implementation keeps state in file-scope `s[4]`; seed it
+  // from a scalar Xoshiro so every run is deterministic.
+  prng::XoshiroScalar seeder(kSeed);
+  const auto st = seeder.getState();
+  s[0] = st[0]; s[1] = st[1]; s[2] = st[2]; s[3] = st[3];
+  for (auto _ : bench) benchmark::DoNotOptimize(next());
+}
+BENCHMARK(BM_ReferenceXoshiro_u64);
 
-  std::uniform_real_distribution<double> double_dist(0.0, 1.0);
-  std::mt19937_64 mt(seed);
-  using ankerl::nanobench::doNotOptimizeAway;
+static void BM_XoshiroScalar_u64(benchmark::State& s) {
+  prng::XoshiroScalar rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_XoshiroScalar_u64);
 
-  // --- Benchmarks that are always available (scalar, dispatch, mt) ---
-  make_bench("UINT64 generation", "sample", static_cast<double>(iterations))
-    .run("Reference Xoshiro UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(next());
-      }
-    })
-    .run("Scalar Xoshiro UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(reference());
-      }
-    })
-    .run("Dispatch Xoshiro UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(dispatch());
-      }
-    })
-    .run("MersenneTwister UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(mt());
-      }
-    })
-    .run("ChaCha20 scalar UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_scalar_uint64());
-      }
-    })
-    .run("ChaCha20 dispatch UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_simd_uint64());
-      }
-    })
-    .run("Philox4x32 scalar UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_scalar());
-      }
-    })
-    .run("Philox4x32 dispatch UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_simd());
-      }
-    })
-    .run("Philox4x64 scalar UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_scalar());
-      }
-    })
-    .run("Philox4x64 dispatch UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_simd());
-      }
-    });
+static void BM_XoshiroSIMD_u64(benchmark::State& s) {
+  prng::XoshiroSIMD rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_XoshiroSIMD_u64);
 
-  make_bench("Unit-interval doubles", "sample", static_cast<double>(iterations))
-    .run("Scalar Xoshiro DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(reference.uniform());
-      }
-    })
-    .run("Dispatch Xoshiro DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(dispatch.uniform());
-      }
-    })
-    .run("ChaCha20 scalar DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_scalar_double.uniform());
-      }
-    })
-    .run("ChaCha20 Dispatch DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_simd_double.uniform());
-      }
-    })
-    .run("Philox4x32 scalar DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_scalar_double.uniform());
-      }
-    })
-    .run("Philox4x32 dispatch DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_simd_double.uniform());
-      }
-    })
-    .run("Philox4x64 scalar DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_scalar_double.uniform());
-      }
-    })
-    .run("Philox4x64 dispatch DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_simd_double.uniform());
-      }
-    });
+static void BM_MT19937_64(benchmark::State& s) {
+  std::mt19937_64 rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_MT19937_64);
 
-  make_bench("std::uniform_real_distribution<double>", "sample",
-             static_cast<double>(iterations))
-    .run("Scalar Xoshiro std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(reference));
-      }
-    })
-    .run("Dispatch Xoshiro std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(dispatch));
-      }
-    })
-    .run("MersenneTwister std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(mt));
-      }
-    })
-    .run("ChaCha20 scalar std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(chacha_scalar_dist));
-      }
-    })
-    .run("ChaCha20 Dispatch std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(chacha_simd_dist));
-      }
-    });
+// ---------- ChaCha ---------------------------------------------------------
+
+static void BM_ChaCha20Scalar_u64(benchmark::State& s) {
+  prng::ChaCha<20> rng(kChaChaKey, kChaChaCounter, kChaChaNonce);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_ChaCha20Scalar_u64);
+
+static void BM_ChaCha20SIMD_u64(benchmark::State& s) {
+  prng::ChaChaSIMD<20> rng(kChaChaKey, kChaChaCounter, kChaChaNonce);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_ChaCha20SIMD_u64);
+
+// ---------- Philox ---------------------------------------------------------
+
+static void BM_Philox4x32Scalar_u64(benchmark::State& s) {
+  prng::Philox<4, 32, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x32Scalar_u64);
+
+static void BM_Philox4x32SIMD_u64(benchmark::State& s) {
+  prng::PhiloxSIMD<4, 32, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x32SIMD_u64);
+
+static void BM_Philox4x64Scalar_u64(benchmark::State& s) {
+  prng::Philox<4, 64, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x64Scalar_u64);
+
+static void BM_Philox4x64SIMD_u64(benchmark::State& s) {
+  prng::PhiloxSIMD<4, 64, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x64SIMD_u64);
+
+// ---------- uniform<double> via generator.uniform() ------------------------
+
+static void BM_XoshiroScalar_double(benchmark::State& s) {
+  prng::XoshiroScalar rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng.uniform());
+}
+BENCHMARK(BM_XoshiroScalar_double);
+
+static void BM_XoshiroSIMD_double(benchmark::State& s) {
+  prng::XoshiroSIMD rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng.uniform());
+}
+BENCHMARK(BM_XoshiroSIMD_double);
+
+// ---------- std::uniform_real_distribution<double> -------------------------
+
+static void BM_XoshiroScalar_std_double(benchmark::State& s) {
+  prng::XoshiroScalar rng(kSeed);
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
+  for (auto _ : s) benchmark::DoNotOptimize(dist(rng));
+}
+BENCHMARK(BM_XoshiroScalar_std_double);
+
+static void BM_XoshiroSIMD_std_double(benchmark::State& s) {
+  prng::XoshiroSIMD rng(kSeed);
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
+  for (auto _ : s) benchmark::DoNotOptimize(dist(rng));
+}
+BENCHMARK(BM_XoshiroSIMD_std_double);
+
+static void BM_MT19937_64_std_double(benchmark::State& s) {
+  std::mt19937_64 rng(kSeed);
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
+  for (auto _ : s) benchmark::DoNotOptimize(dist(rng));
+}
+BENCHMARK(BM_MT19937_64_std_double);
+
+// ---------- Native (-march=native) variants --------------------------------
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-  // --- Native (compile-time best arch) benchmarks ---
-  prng::XoshiroNative rng(seed);
-  using NativeChaCha20 = prng::ChaChaNative<20>;
-  NativeChaCha20 chacha_native_uint64(chacha_key, chacha_counter, chacha_nonce);
-  NativeChaCha20 chacha_native_double(chacha_key, chacha_counter, chacha_nonce);
-  NativeChaCha20 chacha_native_dist(chacha_key, chacha_counter, chacha_nonce);
 
-  using NativePhilox4x32 = prng::PhiloxNative<4, 32, 10>;
-  using NativePhilox4x64 = prng::PhiloxNative<4, 64, 10>;
-  NativePhilox4x32 philox4x32_native_uint64(seed);
-  NativePhilox4x32 philox4x32_native_double(seed);
-  NativePhilox4x64 philox4x64_native_uint64(seed);
-  NativePhilox4x64 philox4x64_native_double(seed);
-
-  make_bench("Native UINT64 generation", "sample", static_cast<double>(iterations))
-    .run("XoshiroNative UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(rng());
-      }
-    })
-    .run("ChaCha20 native UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_native_uint64());
-      }
-    })
-    .run("Philox4x32 native UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_native_uint64());
-      }
-    })
-    .run("Philox4x64 native UINT64", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_native_uint64());
-      }
-    });
-
-  make_bench("Native doubles", "sample", static_cast<double>(iterations))
-    .run("XoshiroNative DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(rng.uniform());
-      }
-    })
-    .run("ChaCha20 native DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(chacha_native_double.uniform());
-      }
-    })
-    .run("Philox4x32 native DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x32_native_double.uniform());
-      }
-    })
-    .run("Philox4x64 native DOUBLE", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(philox4x64_native_double.uniform());
-      }
-    });
-
-  make_bench("Native std::uniform_real_distribution<double>", "sample",
-             static_cast<double>(iterations))
-    .run("XoshiroNative std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(rng));
-      }
-    })
-    .run("ChaCha20 native std::random<double>", [&] {
-      for (int i = 0; i < iterations; ++i) {
-        doNotOptimizeAway(double_dist(chacha_native_dist));
-      }
-    });
-#endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
-
+static void BM_XoshiroNative_u64(benchmark::State& s) {
+  prng::XoshiroNative rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
 }
+BENCHMARK(BM_XoshiroNative_u64);
+
+static void BM_XoshiroNative_double(benchmark::State& s) {
+  prng::XoshiroNative rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng.uniform());
+}
+BENCHMARK(BM_XoshiroNative_double);
+
+static void BM_ChaCha20Native_u64(benchmark::State& s) {
+  prng::ChaChaNative<20> rng(kChaChaKey, kChaChaCounter, kChaChaNonce);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_ChaCha20Native_u64);
+
+static void BM_Philox4x32Native_u64(benchmark::State& s) {
+  prng::PhiloxNative<4, 32, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x32Native_u64);
+
+static void BM_Philox4x64Native_u64(benchmark::State& s) {
+  prng::PhiloxNative<4, 64, 10> rng(kSeed);
+  for (auto _ : s) benchmark::DoNotOptimize(rng());
+}
+BENCHMARK(BM_Philox4x64Native_u64);
+
+#endif  // XSIMD_NO_SUPPORTED_ARCHITECTURE
+
+}  // namespace
+
+BENCHMARK_MAIN();

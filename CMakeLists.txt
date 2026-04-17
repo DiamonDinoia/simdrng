@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(random VERSION 0.1 LANGUAGES CXX)
+project(simdrng VERSION 0.0 LANGUAGES CXX)
 
 # if no build type was specified, default to Release
 if (NOT CMAKE_BUILD_TYPE)
@@ -15,6 +15,9 @@ set(POET_DOWNLOAD_VERSION 4e0c50b75224b9916cb8062a75d81ab7cc403df1)
 option(ENABLE_TESTS "Enable tests" ON)
 option(ENABLE_PYTHON "Enable Python bindings" ON)
 option(MARCH_NATIVE "Build benchmarks with -march=native" OFF)
+option(BUILD_EXAMPLES "Build C++ examples under examples/cpp" OFF)
+option(BUILD_DOCS "Build Sphinx/Doxygen documentation" OFF)
+option(ENABLE_CODSPEED "Link the benchmark harness against codspeed-cpp for CodSpeed instrumentation" OFF)
 
 if (CPM_SOURCE_CACHE)
     set(CPM_DOWNLOAD_LOCATION "${CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
@@ -90,13 +93,14 @@ list(APPEND LINK_OPTIONS
         $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:${PERF_LINK_FLAGS}>
 )
 
-add_library(random STATIC src/xoshiro_simd.cpp)
-target_include_directories(random PUBLIC
+add_library(simdrng STATIC src/xoshiro_simd.cpp)
+add_library(simdrng::simdrng ALIAS simdrng)
+target_include_directories(simdrng PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(random PUBLIC xsimd poet::poet)
-set_target_properties(random PROPERTIES
+target_link_libraries(simdrng PUBLIC xsimd poet::poet)
+set_target_properties(simdrng PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
     INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
@@ -108,11 +112,11 @@ set_target_properties(random PROPERTIES
 # SIMD intrinsics that don't exist without a SIMD arch, but these templates
 # are only instantiated in dispatch TUs compiled with the correct -march flags.
 add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
-target_compile_options(random PRIVATE ${COMPILE_OPTIONS})
-target_compile_options(random PUBLIC ${TEMPLATE_BODY_FLAGS})
-target_link_options(random PRIVATE ${LINK_OPTIONS})
-target_compile_features(random PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
-target_compile_features(random INTERFACE cxx_std_20)
+target_compile_options(simdrng PRIVATE ${COMPILE_OPTIONS})
+target_compile_options(simdrng PUBLIC ${TEMPLATE_BODY_FLAGS})
+target_link_options(simdrng PRIVATE ${LINK_OPTIONS})
+target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
+target_compile_features(simdrng INTERFACE cxx_std_20)
 
 # Architecture-specific SIMD dispatch variants.
 # Each variant is compiled with flags that enable a specific SIMD level;
@@ -151,7 +155,7 @@ foreach (PRNG_TYPE IN ITEMS xoshiro chacha philox)
         )
         target_link_options(${SIMD_SOURCE_TARGET} PRIVATE ${LINK_OPTIONS})
         target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
-        target_sources(random PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
+        target_sources(simdrng PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
     endforeach ()
 endforeach ()
 
@@ -160,14 +164,24 @@ if (ENABLE_TESTS)
     add_subdirectory(tests)
 endif ()
 
+if (BUILD_EXAMPLES)
+    if (NOT ENABLE_TESTS)
+        enable_testing()
+    endif()
+    add_subdirectory(examples/cpp)
+endif()
+
+if (BUILD_DOCS)
+    add_subdirectory(docs)
+endif()
 
 if (ENABLE_PYTHON)
     add_subdirectory(python)
 endif()
 
 # Installation rules (Always available, independent of Python)
-install(TARGETS random
-        EXPORT randomTargets
+install(TARGETS simdrng
+        EXPORT simdrngTargets
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin
@@ -175,26 +189,26 @@ install(TARGETS random
 
 install(DIRECTORY include/ DESTINATION include)
 
-install(EXPORT randomTargets
-        FILE randomTargets.cmake
-        NAMESPACE prng::
-        DESTINATION lib/cmake/random
+install(EXPORT simdrngTargets
+        FILE simdrngTargets.cmake
+        NAMESPACE simdrng::
+        DESTINATION lib/cmake/simdrng
 )
 
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/randomConfigVersion.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfigVersion.cmake"
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY AnyNewerVersion
 )
 
-configure_file(cmake/randomConfig.cmake.in
-        "${CMAKE_CURRENT_BINARY_DIR}/randomConfig.cmake"
+configure_file(cmake/simdrngConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
         @ONLY
 )
 
 install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/randomConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/randomConfigVersion.cmake"
-        DESTINATION lib/cmake/random
+        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfigVersion.cmake"
+        DESTINATION lib/cmake/simdrng
 )

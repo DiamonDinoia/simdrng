@@ -1,0 +1,99 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  bench:
+    name: ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc-14, gcc-15, clang-19, clang-20]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.compiler }}
+          cmake: true
+          ninja: true
+
+      - name: Install libpfm4
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build/bench -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_FLAGS="-march=x86-64-v3 -O3"
+          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
+
+      - name: Build
+        run: cmake --build build/bench --target benchmarks --parallel
+
+      - name: Run benchmarks
+        run: |
+          mkdir -p results/${{ matrix.compiler }}
+          ./build/bench/tests/benchmarks \
+            --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES \
+            --benchmark_format=json \
+            --benchmark_out=results/${{ matrix.compiler }}/bench.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.compiler }}
+          path: results/${{ matrix.compiler }}/bench.json
+          retention-days: 30
+
+  publish:
+    name: Publish to benchmark-results
+    needs: bench
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bench-downloads
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - run: pip install -r scripts/requirements.txt
+
+      - name: Check out orphan branch
+        run: |
+          git fetch origin benchmark-results:benchmark-results 2>/dev/null || \
+            git checkout --orphan benchmark-results
+          git checkout benchmark-results 2>/dev/null || git checkout --orphan benchmark-results
+          git rm -rf . >/dev/null 2>&1 || true
+
+      - name: Organise results
+        run: |
+          ts=$(date -u +%Y%m%dT%H%M%SZ)
+          for art in bench-downloads/bench-*; do
+            compiler="${art##*/bench-}"
+            mkdir -p "results/${compiler}"
+            cp "${art}/bench.json" "results/${compiler}/${ts}.json"
+          done
+
+      - name: Regenerate charts
+        run: python scripts/generate_charts.py results/ --out charts/
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/ charts/
+          git commit -m "bench: ${GITHUB_SHA:0:7}" || exit 0
+          git push origin benchmark-results

@@ -23,7 +23,8 @@
         "CMAKE_BUILD_TYPE": "Release",
         "ENABLE_TESTS": "ON",
         "ENABLE_PYTHON": "OFF",
-        "MARCH_NATIVE": "ON"
+        "MARCH_NATIVE": "ON",
+        "BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -33,7 +34,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ENABLE_TESTS": "ON",
-        "ENABLE_PYTHON": "OFF"
+        "ENABLE_PYTHON": "OFF",
+        "BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -41,35 +43,34 @@
       "displayName": "Python Bindings",
       "inherits": "release",
       "cacheVariables": {
-        "ENABLE_PYTHON": "ON"
+        "ENABLE_PYTHON": "ON",
+        "BUILD_EXAMPLES": "OFF"
+      }
+    },
+    {
+      "name": "docs",
+      "displayName": "Docs",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_TESTS": "OFF",
+        "ENABLE_PYTHON": "OFF",
+        "BUILD_DOCS": "ON"
       }
     }
   ],
   "buildPresets": [
-    {
-      "name": "release",
-      "configurePreset": "release"
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug"
-    },
-    {
-      "name": "python",
-      "configurePreset": "python"
-    }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "python", "configurePreset": "python" },
+    { "name": "docs", "configurePreset": "docs", "targets": ["docs"] }
   ],
   "testPresets": [
     {
       "name": "test",
       "configurePreset": "release",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error",
-        "stopOnFailure": false
-      }
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
     }
   ]
 }

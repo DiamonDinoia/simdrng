@@ -1,7 +1,9 @@
 cmake-build-*/
+cmake-build*/
 .cache/
 .idea
 build/
+build-*/
 pyrandom/__pycache__/
 fix.patch
 __pycache__/
@@ -11,4 +13,17 @@ __pycache__/
 shell.nix
 .clangd
 
-cmake-build*/
+# Docs / bench artifacts
+docs/_build/
+docs/doxygen/
+results/
+
+# Python
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Local tool state
+.claude/
+Testing/

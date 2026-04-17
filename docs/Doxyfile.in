@@ -1,0 +1,23 @@
+PROJECT_NAME           = "simdrng"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+INPUT                  = @DOXYGEN_INPUT_DIR@
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = PRNG_ALWAYS_INLINE= \
+                         PRNG_HOT= \
+                         PRNG_FORCE_INLINE= \
+                         __attribute__(x)=

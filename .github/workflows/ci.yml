@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, compiler: gcc,   version: "13" }
+          - { os: ubuntu-24.04, compiler: gcc,   version: "14" }
+          - { os: ubuntu-24.04, compiler: clang, version: "18" }
+          - { os: ubuntu-24.04, compiler: clang, version: "20" }
+          - { os: macos-14,     compiler: apple-clang }
+          - { os: windows-2022, compiler: msvc }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup C++ toolchain
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.compiler }}${{ matrix.version && format('-{0}', matrix.version) || '' }}
+          cmake: true
+          ninja: true
+
+      - name: Install libpfm4 (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+
+      - name: Configure
+        run: cmake --preset release -DENABLE_PYTHON=OFF
+
+      - name: Build
+        run: cmake --build build/release --parallel
+
+      - name: Test
+        run: ctest --preset test --output-on-failure
+
+  sanitizers:
+    name: UBSan + ASan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aminya/setup-cpp@v1
+        with: { compiler: clang-20, cmake: true, ninja: true }
+      - name: Install libpfm4
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build/san -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
+      - run: cmake --build build/san --parallel
+      - run: ctest --test-dir build/san --output-on-failure
+
+  analysis:
+    name: clang-tidy + cppcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aminya/setup-cpp@v1
+        with:
+          compiler: clang-20
+          cmake: true
+          ninja: true
+          clangtidy: true
+          cppcheck: true
+      - name: Install libpfm4
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+      - run: cmake --preset release -DENABLE_PYTHON=OFF
+      - name: Run clang-tidy on changed files
+        run: |
+          files=$(git diff --name-only origin/main...HEAD -- '*.cpp' '*.hpp' || true)
+          if [ -n "$files" ]; then
+            clang-tidy -p build/release $files
+          fi
+      - name: cppcheck (headers)
+        run: cppcheck --enable=warning,performance,portability --inline-suppr --std=c++20 --quiet include/
+
+  coverage:
+    name: Coverage (gcc + lcov)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aminya/setup-cpp@v1
+        with: { compiler: gcc-14, cmake: true, ninja: true }
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev lcov
+      - name: Configure
+        run: >
+          cmake -S . -B build/cov -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="--coverage -O0"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
+      - run: cmake --build build/cov --parallel
+      - run: ctest --test-dir build/cov --output-on-failure
+      - name: Capture coverage
+        run: |
+          lcov --directory build/cov --capture --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
+      - uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.info
+          fail_ci_if_error: false

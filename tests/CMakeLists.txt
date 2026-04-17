@@ -8,15 +8,47 @@ CPMAddPackage(
         SYSTEM
 )
 
+# Google Benchmark. Linux builds enable libpfm for hardware counters
+# (IPC / cache-miss / branch-miss) to match the columns we previously
+# surfaced via nanobench.
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Detect libpfm4 (header + .so). When both are present, enable hardware
+    # counters in Google Benchmark; otherwise fall back silently so local
+    # builds without libpfm4-dev still work.
+    find_path(PFM_INCLUDE_DIR perfmon/pfmlib.h)
+    find_library(PFM_LIBRARY pfm)
+    if (PFM_INCLUDE_DIR AND PFM_LIBRARY)
+        set(BENCHMARK_ENABLE_LIBPFM ON CACHE BOOL "" FORCE)
+        message(STATUS "libpfm4 found; Google Benchmark hardware counters enabled")
+    else()
+        message(STATUS "libpfm4 not found; hardware counters disabled (install libpfm4-dev)")
+    endif()
+endif()
+
 CPMAddPackage(
-        NAME nanobench
-        GITHUB_REPOSITORY martinus/nanobench
-        VERSION 4.3.11
+        NAME benchmark
+        GITHUB_REPOSITORY google/benchmark
+        VERSION 1.9.1
         GIT_SHALLOW YES
         GIT_PROGRESS YES
         EXCLUDE_FROM_ALL YES
         SYSTEM
 )
+
+if (ENABLE_CODSPEED)
+    CPMAddPackage(
+            NAME codspeed
+            GITHUB_REPOSITORY CodSpeedHQ/codspeed-cpp
+            GIT_TAG main
+            GIT_SHALLOW YES
+            GIT_PROGRESS YES
+            EXCLUDE_FROM_ALL YES
+            SYSTEM
+    )
+endif()
 list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/contrib)
 set(TEST_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
 
@@ -54,17 +86,17 @@ include(CTest)
 enable_testing()
 
 add_executable(testSplitMix splitmix_tests.cpp)
-target_link_libraries(testSplitMix PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testSplitMix PRIVATE simdrng Catch2::Catch2WithMain)
 target_include_directories(testSplitMix PRIVATE ${TEST_INCLUDE_DIR})
 add_test(NAME testSplitMix COMMAND testSplitMix)
 
 add_executable(testXoshiro test_xoshiro.cpp)
-target_link_libraries(testXoshiro PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testXoshiro PRIVATE simdrng Catch2::Catch2WithMain)
 target_include_directories(testXoshiro PRIVATE ${TEST_INCLUDE_DIR})
 add_test(NAME testXoshiro COMMAND testXoshiro)
 
 add_executable(testXoshiroSIMD test_xoshiro_simd.cpp)
-target_link_libraries(testXoshiroSIMD PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testXoshiroSIMD PRIVATE simdrng Catch2::Catch2WithMain)
 target_include_directories(testXoshiroSIMD PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
 add_test(NAME testXoshiroSIMD COMMAND testXoshiroSIMD)
 
@@ -77,43 +109,47 @@ if (NOT TARGET monocypher)
 endif()
 
 add_executable(testChaCha test_chacha.cpp)
-target_link_libraries(testChaCha PRIVATE random monocypher Catch2::Catch2WithMain)
+target_link_libraries(testChaCha PRIVATE simdrng monocypher Catch2::Catch2WithMain)
 add_test(NAME testChaCha COMMAND testChaCha)
 
 add_executable(testChaChaSIMD test_chacha_simd.cpp)
-target_link_libraries(testChaChaSIMD PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testChaChaSIMD PRIVATE simdrng Catch2::Catch2WithMain)
 target_include_directories(testChaChaSIMD PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
 add_test(NAME testChaChaSIMD COMMAND testChaChaSIMD)
 
 add_executable(testPhilox test_philox.cpp)
-target_link_libraries(testPhilox PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testPhilox PRIVATE simdrng Catch2::Catch2WithMain)
 add_test(NAME testPhilox COMMAND testPhilox)
 
 add_executable(testPhiloxSIMD test_philox_simd.cpp)
-target_link_libraries(testPhiloxSIMD PRIVATE random Catch2::Catch2WithMain)
+target_link_libraries(testPhiloxSIMD PRIVATE simdrng Catch2::Catch2WithMain)
 target_include_directories(testPhiloxSIMD PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
 add_test(NAME testPhiloxSIMD COMMAND testPhiloxSIMD)
 
 add_executable(benchmarks benchmarks.cpp)
-target_link_libraries(benchmarks PRIVATE random nanobench)
 target_include_directories(benchmarks PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
 target_compile_options(benchmarks PRIVATE ${COMPILE_OPTIONS})
 target_link_options(benchmarks PRIVATE ${LINK_OPTIONS})
+
+if (ENABLE_CODSPEED)
+    # codspeed-cpp ships a drop-in replacement for benchmark::benchmark_main
+    # that emits CodSpeed instrumentation instead of timing output.
+    target_link_libraries(benchmarks PRIVATE simdrng codspeed::codspeed_benchmark)
+    target_compile_definitions(benchmarks PRIVATE SIMDRNG_CODSPEED=1)
+else()
+    target_link_libraries(benchmarks PRIVATE simdrng benchmark::benchmark_main)
+endif()
 
 if (MARCH_NATIVE)
     target_compile_options(benchmarks PRIVATE -march=native)
 endif ()
 
-# Add a custom target to run the benchmarks
-add_custom_target(benchmark
+# Convenience target to run the benchmarks with hardware counters enabled.
+add_custom_target(run_benchmarks
     COMMAND benchmarks
+            --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES
     DEPENDS benchmarks
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running benchmarks..."
     VERBATIM
 )
-
-
-if (MARCH_NATIVE)
-    target_compile_options(benchmarks PRIVATE -march=native)
-endif ()

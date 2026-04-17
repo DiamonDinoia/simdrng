@@ -1,0 +1,32 @@
+name: Docs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "include/**"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
+      - "examples/**"
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Install Sphinx deps
+        run: pip install -r docs/requirements.txt
+
+      - name: Configure (docs preset)
+        run: cmake --preset docs
+
+      - name: Build docs
+        run: cmake --build build/docs --target docs

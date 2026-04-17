@@ -1,0 +1,44 @@
+name: CodSpeed
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# OIDC authentication removes the need for a CODSPEED_TOKEN secret.
+# See https://codspeed.io/docs/integrations/ci/github-actions/configuration#oidc-recommended
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  codspeed:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aminya/setup-cpp@v1
+        with:
+          compiler: gcc-14
+          cmake: true
+          ninja: true
+
+      - name: Install libpfm4
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+
+      - name: Configure with CodSpeed instrumentation
+        run: >
+          cmake -S . -B build/codspeed -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_FLAGS="-mavx2 -mfma -O3"
+          -DENABLE_CODSPEED=ON
+          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
+
+      - name: Build
+        run: cmake --build build/codspeed --target benchmarks --parallel
+
+      - name: Run with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        with:
+          run: ./build/codspeed/tests/benchmarks
