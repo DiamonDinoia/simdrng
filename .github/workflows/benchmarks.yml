@@ -15,7 +15,7 @@ jobs:
       matrix:
         compiler: [gcc-14, gcc-15, clang-19, clang-20]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: aminya/setup-cpp@v1
         with:
@@ -44,7 +44,7 @@ jobs:
             --benchmark_format=json \
             --benchmark_out=results/${{ matrix.compiler }}/bench.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-${{ matrix.compiler }}
           path: results/${{ matrix.compiler }}/bench.json
@@ -58,15 +58,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: bench-downloads
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.11" }
 
       - run: pip install -r scripts/requirements.txt

@@ -32,7 +32,7 @@ jobs:
           - { compiler: gcc, version: "13", isa: avx2 }
           - { compiler: clang, version: "18", isa: avx2 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
@@ -46,10 +46,9 @@ jobs:
 
       - name: Setup Intel SDE (AVX-512 runs)
         if: matrix.isa == 'avx512'
-        uses: petarpetrovt/setup-sde@v2.4
+        uses: petarpetrovt/setup-sde@v3
         with:
           environmentVariableName: SDE_PATH
-          sdeVersion: 9.48.0
 
       - name: Compute flags
         id: flags
@@ -96,7 +95,7 @@ jobs:
           - { compiler: gcc, version: "20" }
           - { compiler: clang, version: "14" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
@@ -155,7 +154,7 @@ jobs:
           - { os: macos-14,     compiler: apple-clang }
           - { os: windows-2022, compiler: msvc }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
@@ -180,7 +179,7 @@ jobs:
     name: UBSan + ASan
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: aminya/setup-cpp@v1
         with: { compiler: clang-20, cmake: true, ninja: true }
       - name: Install libpfm4
@@ -199,7 +198,7 @@ jobs:
     name: clang-tidy + cppcheck
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: aminya/setup-cpp@v1
         with:
           compiler: clang-20
@@ -224,7 +223,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: aminya/setup-cpp@v1
         with: { compiler: gcc-14, cmake: true, ninja: true }
       - name: Install deps
@@ -242,7 +241,7 @@ jobs:
         run: |
           lcov --directory build/cov --capture --output-file coverage.info
           lcov --remove coverage.info '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         with:
           files: ./coverage.info
           token: ${{ secrets.CODECOV_TOKEN }}
