@@ -14,7 +14,7 @@ CPMAddPackage(
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ENABLE_CODSPEED)
     # Detect libpfm4 (header + .so). When both are present, enable hardware
     # counters in Google Benchmark; otherwise fall back silently so local
     # builds without libpfm4-dev still work.
@@ -136,9 +136,6 @@ add_test(NAME testPhiloxSIMD COMMAND testPhiloxSIMD)
 
 add_executable(benchmarks benchmarks.cpp)
 target_include_directories(benchmarks PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
-target_compile_options(benchmarks PRIVATE ${COMPILE_OPTIONS})
-target_link_options(benchmarks PRIVATE ${LINK_OPTIONS})
-
 target_link_libraries(benchmarks PRIVATE simdrng benchmark::benchmark_main)
 if (ENABLE_CODSPEED)
     target_compile_definitions(benchmarks PRIVATE SIMDRNG_CODSPEED=1)

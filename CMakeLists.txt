@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.29)
 
 project(simdrng VERSION 0.0 LANGUAGES CXX)
 
@@ -59,7 +59,21 @@ CPMAddPackage(
 
 include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
+include(CheckIPOSupported)
 include(cmake/CompilerOptions.cmake)
+
+check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_msg LANGUAGES CXX)
+if (_ipo_ok)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
+endif ()
+
+if (NOT DEFINED CMAKE_LINKER_TYPE
+    AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+    AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(CMAKE_LINKER_TYPE LLD)
+endif ()
 
 # List candidate standards in descending order.
 # Use CMAKE_CXX_COMPILE_FEATURES (portable across MSVC/GCC/Clang) rather than
@@ -78,19 +92,6 @@ if (NOT SUPPORTED_CXX_STANDARD)
     message(FATAL_ERROR "The compiler does not support C++17 or higher.")
 endif ()
 
-# Get performance flags
-get_performance_flags(PERF_COMPILE_FLAGS PERF_LINK_FLAGS)
-
-# --- wire into your existing lists (only for optimized configs) ---
-list(APPEND COMPILE_OPTIONS
-        $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:${PERF_COMPILE_FLAGS}>
-)
-
-set(LINK_OPTIONS "")
-list(APPEND LINK_OPTIONS
-        $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:${PERF_LINK_FLAGS}>
-)
-
 add_library(simdrng STATIC src/xoshiro_simd.cpp)
 add_library(simdrng::simdrng ALIAS simdrng)
 target_include_directories(simdrng PUBLIC
@@ -100,9 +101,6 @@ target_include_directories(simdrng PUBLIC
 target_link_libraries(simdrng PUBLIC xsimd poet::poet)
 set_target_properties(simdrng PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
-    INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
-    INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
 )
@@ -110,9 +108,7 @@ set_target_properties(simdrng PROPERTIES
 # SIMD intrinsics that don't exist without a SIMD arch, but these templates
 # are only instantiated in dispatch TUs compiled with the correct -march flags.
 add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
-target_compile_options(simdrng PRIVATE ${COMPILE_OPTIONS})
 target_compile_options(simdrng PUBLIC ${TEMPLATE_BODY_FLAGS})
-target_link_options(simdrng PRIVATE ${LINK_OPTIONS})
 target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
 target_compile_features(simdrng INTERFACE cxx_std_20)
 
@@ -142,16 +138,12 @@ foreach (PRNG_TYPE IN ITEMS xoshiro chacha philox)
         add_library(${SIMD_SOURCE_TARGET} OBJECT src/${PRNG_TYPE}_simd_dispatch.cpp)
         target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd poet::poet)
-        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${COMPILE_OPTIONS} ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
+        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
         set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
             POSITION_INDEPENDENT_CODE ON
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
-            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
-            INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
             CXX_VISIBILITY_PRESET hidden
             VISIBILITY_INLINES_HIDDEN ON
         )
-        target_link_options(${SIMD_SOURCE_TARGET} PRIVATE ${LINK_OPTIONS})
         target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
         target_sources(simdrng PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
     endforeach ()

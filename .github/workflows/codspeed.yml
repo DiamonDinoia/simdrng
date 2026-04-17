@@ -24,9 +24,6 @@ jobs:
           cmake: true
           ninja: true
 
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
-
       - name: Configure with CodSpeed instrumentation
         run: >
           cmake -S . -B build/codspeed -G Ninja
