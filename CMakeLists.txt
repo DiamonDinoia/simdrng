@@ -63,11 +63,6 @@ include(CheckIPOSupported)
 include(cmake/CompilerOptions.cmake)
 
 check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_msg LANGUAGES CXX)
-if (_ipo_ok)
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
-endif ()
 
 if (NOT DEFINED CMAKE_LINKER_TYPE
     AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
@@ -101,6 +96,9 @@ target_include_directories(simdrng PUBLIC
 target_link_libraries(simdrng PUBLIC xsimd poet::poet)
 set_target_properties(simdrng PROPERTIES
     POSITION_INDEPENDENT_CODE ON
+    INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
+    INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
+    INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
 )
@@ -141,6 +139,9 @@ foreach (PRNG_TYPE IN ITEMS xoshiro chacha philox)
         target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
         set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
             POSITION_INDEPENDENT_CODE ON
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
+            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
+            INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
             CXX_VISIBILITY_PRESET hidden
             VISIBILITY_INLINES_HIDDEN ON
         )
