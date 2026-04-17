@@ -71,6 +71,9 @@ jobs:
 
       - run: pip install -r scripts/requirements.txt
 
+      - name: Stash scripts before orphan checkout
+        run: cp -r scripts /tmp/bench-scripts
+
       - name: Check out orphan branch
         run: |
           git fetch origin benchmark-results:benchmark-results 2>/dev/null || \
@@ -88,7 +91,7 @@ jobs:
           done
 
       - name: Regenerate charts
-        run: python scripts/generate_charts.py results/ --out charts/
+        run: python /tmp/bench-scripts/generate_charts.py results/ --out charts/
 
       - name: Commit and push
         run: |
