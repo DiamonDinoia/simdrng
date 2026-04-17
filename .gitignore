@@ -27,3 +27,6 @@ venv/
 # Local tool state
 .claude/
 Testing/
+
+# Generated at wheel-build time
+python/simdrng/_version.py

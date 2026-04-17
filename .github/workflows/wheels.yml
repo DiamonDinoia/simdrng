@@ -13,8 +13,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # -------------------------------------------------------------------------
+  # Compute the distribution version up-front. Tags get the exact tag version;
+  # pushes to main get 0.0.0.dev<N>, where N is the linear commit count so
+  # every main commit yields a strictly increasing, PEP 440-compliant version
+  # that TestPyPI will accept. The short commit hash is written into
+  # simdrng/_version.py so installed users can see which commit they got.
+  # -------------------------------------------------------------------------
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      commit:  ${{ steps.v.outputs.commit }}
+      is_release: ${{ steps.v.outputs.is_release }}
+      is_dev: ${{ steps.v.outputs.is_dev }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: v
+        shell: bash
+        run: |
+          base=$(awk -F'"' '/^version = /{print $2; exit}' python/pyproject.toml)
+          sha=$(git rev-parse --short HEAD)
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            echo "is_release=true"   >> "$GITHUB_OUTPUT"
+            echo "is_dev=false"      >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            count=$(git rev-list --count HEAD)
+            version="${base}.dev${count}"
+            echo "is_release=false"  >> "$GITHUB_OUTPUT"
+            echo "is_dev=true"       >> "$GITHUB_OUTPUT"
+          else
+            count=$(git rev-list --count HEAD)
+            version="${base}.dev${count}"
+            echo "is_release=false"  >> "$GITHUB_OUTPUT"
+            echo "is_dev=false"      >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${version}"  >> "$GITHUB_OUTPUT"
+          echo "commit=${sha}"       >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${version} commit=${sha}"
+
   build-wheels:
     name: ${{ matrix.os }} / ${{ matrix.arch }}
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -29,6 +71,24 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive, fetch-depth: 0 }
 
+      - name: Stamp version + commit hash
+        shell: bash
+        env:
+          PKG_VERSION: ${{ needs.version.outputs.version }}
+          PKG_COMMIT:  ${{ needs.version.outputs.commit }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          ver = os.environ["PKG_VERSION"]
+          sha = os.environ["PKG_COMMIT"]
+          p = pathlib.Path("python/pyproject.toml")
+          p.write_text(re.sub(r'^version = ".*"', f'version = "{ver}"',
+                              p.read_text(), count=1, flags=re.M))
+          pathlib.Path("python/simdrng/_version.py").write_text(
+              f'__version__ = "{ver}"\n__commit__ = "{sha}"\n'
+          )
+          PY
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.21
         env:
@@ -38,8 +98,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_BUILD_LINUX: >-
             yum install -y libpfm-devel || apt-get update && apt-get install -y libpfm4-dev || true
-          # pyproject.toml's [tool.cibuildwheel] already defines test-requires
-          # and test-command; keep them as the single source of truth.
+          # Test command lives in python/pyproject.toml [tool.cibuildwheel].
         with:
           package-dir: ./python
           output-dir: wheelhouse
@@ -50,22 +109,47 @@ jobs:
           path: wheelhouse/*.whl
 
   build-sdist:
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+
+      - name: Stamp version + commit hash
+        shell: bash
+        env:
+          PKG_VERSION: ${{ needs.version.outputs.version }}
+          PKG_COMMIT:  ${{ needs.version.outputs.commit }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          ver = os.environ["PKG_VERSION"]
+          sha = os.environ["PKG_COMMIT"]
+          p = pathlib.Path("python/pyproject.toml")
+          p.write_text(re.sub(r'^version = ".*"', f'version = "{ver}"',
+                              p.read_text(), count=1, flags=re.M))
+          pathlib.Path("python/simdrng/_version.py").write_text(
+              f'__version__ = "{ver}"\n__commit__ = "{sha}"\n'
+          )
+          PY
+
       - run: pip install build
       - run: python -m build --sdist python/ --outdir dist/
       - uses: actions/upload-artifact@v4
         with: { name: sdist, path: dist/*.tar.gz }
 
+  # -------------------------------------------------------------------------
+  # Dev releases: every push to main whose full matrix (build + cibuildwheel
+  # tests across OS/arch) is green auto-publishes to TestPyPI with the
+  # 0.0.0.dev<N> version computed above. skip-existing avoids duplicate errors.
+  # -------------------------------------------------------------------------
   publish-testpypi:
-    name: Publish to TestPyPI
-    needs: [build-wheels, build-sdist]
+    name: Publish dev build to TestPyPI
+    needs: [version, build-wheels, build-sdist]
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: needs.version.outputs.is_dev == 'true'
     environment:
       name: testpypi
       url: https://test.pypi.org/p/simdrng
@@ -73,19 +157,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+        with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
   publish-pypi:
-    name: Publish to PyPI
-    needs: [build-wheels, build-sdist]
+    name: Publish release to PyPI
+    needs: [version, build-wheels, build-sdist]
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: needs.version.outputs.is_release == 'true'
     environment:
       name: pypi
       url: https://pypi.org/p/simdrng
@@ -93,7 +175,5 @@ jobs:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+        with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
