@@ -30,6 +30,10 @@ ALL_GENERATORS = [
     ("ChaCha8", lambda: pyrandom.ChaCha8(42)),
     ("ChaCha12", lambda: pyrandom.ChaCha12(42)),
     ("ChaCha20", lambda: pyrandom.ChaCha20(42)),
+    ("Philox4x32", lambda: pyrandom.Philox4x32(42)),
+    ("Philox2x32", lambda: pyrandom.Philox2x32(42)),
+    ("Philox4x64", lambda: pyrandom.Philox4x64(42)),
+    ("Philox2x64", lambda: pyrandom.Philox2x64(42)),
 ]
 
 

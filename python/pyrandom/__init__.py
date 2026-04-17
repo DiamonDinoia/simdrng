@@ -25,6 +25,10 @@ from pyrandom_ext import (
     _ChaCha8SIMD,
     _ChaCha12SIMD,
     _ChaCha20SIMD,
+    _Philox4x32SIMD,
+    _Philox2x32SIMD,
+    _Philox4x64SIMD,
+    _Philox2x64SIMD,
 )
 
 # Conditional imports for native (compile-time arch) generators
@@ -37,6 +41,15 @@ try:
     from pyrandom_ext import _ChaCha8Native, _ChaCha12Native, _ChaCha20Native
 except ImportError:
     _ChaCha8Native = _ChaCha12Native = _ChaCha20Native = None
+
+try:
+    from pyrandom_ext import (
+        _Philox4x32Native, _Philox2x32Native,
+        _Philox4x64Native, _Philox2x64Native,
+    )
+except ImportError:
+    _Philox4x32Native = _Philox2x32Native = None
+    _Philox4x64Native = _Philox2x64Native = None
 
 # ── Registry for pickle restoration ─────────────────────────────────────────
 
@@ -318,6 +331,89 @@ ChaCha20SIMDBitGenerator, ChaCha20NativeBitGenerator = _make_chacha_bg_class(
 )
 
 
+# ── Philox helpers ─────────────────────────────────────────────────────────
+
+
+def _make_philox_bg_class(
+    name: str,
+    simd_cls: type,
+    native_cls: type | None,
+) -> tuple[type[BitGeneratorBase], type[BitGeneratorBase] | None]:
+    """Factory that creates SIMD and Native BitGenerator subclasses for a Philox variant."""
+
+    @_register
+    class _SIMDClass(BitGeneratorBase):
+        _bit_generator_name = f"{name}SIMD"
+
+        def __init__(
+            self,
+            seed_or_key: int | Sequence[int] = 0,
+            counter: int | Sequence[int] = 0,
+        ) -> None:
+            if isinstance(seed_or_key, int):
+                if isinstance(counter, int):
+                    super().__init__(simd_cls(seed_or_key, counter))
+                else:
+                    super().__init__(simd_cls(seed_or_key, 0))
+            else:
+                super().__init__(simd_cls(list(seed_or_key), list(counter)))
+
+        @classmethod
+        def _from_state(cls, state: dict) -> _SIMDClass:
+            bg = cls(0)
+            bg.state = state
+            return bg
+
+    _SIMDClass.__name__ = _SIMDClass.__qualname__ = f"{name}SIMDBitGenerator"
+
+    native_klass = None
+    if native_cls is not None:
+
+        @_register
+        class _NativeClass(BitGeneratorBase):
+            _bit_generator_name = f"{name}Native"
+
+            def __init__(
+                self,
+                seed_or_key: int | Sequence[int] = 0,
+                counter: int | Sequence[int] = 0,
+            ) -> None:
+                if isinstance(seed_or_key, int):
+                    if isinstance(counter, int):
+                        super().__init__(native_cls(seed_or_key, counter))
+                    else:
+                        super().__init__(native_cls(seed_or_key, 0))
+                else:
+                    super().__init__(native_cls(list(seed_or_key), list(counter)))
+
+            @classmethod
+            def _from_state(cls, state: dict) -> _NativeClass:
+                bg = cls(0)
+                bg.state = state
+                return bg
+
+        _NativeClass.__name__ = _NativeClass.__qualname__ = (
+            f"{name}NativeBitGenerator"
+        )
+        native_klass = _NativeClass
+
+    return _SIMDClass, native_klass
+
+
+Philox4x32SIMDBitGenerator, Philox4x32NativeBitGenerator = _make_philox_bg_class(
+    "Philox4x32", _Philox4x32SIMD, _Philox4x32Native,
+)
+Philox2x32SIMDBitGenerator, Philox2x32NativeBitGenerator = _make_philox_bg_class(
+    "Philox2x32", _Philox2x32SIMD, _Philox2x32Native,
+)
+Philox4x64SIMDBitGenerator, Philox4x64NativeBitGenerator = _make_philox_bg_class(
+    "Philox4x64", _Philox4x64SIMD, _Philox4x64Native,
+)
+Philox2x64SIMDBitGenerator, Philox2x64NativeBitGenerator = _make_philox_bg_class(
+    "Philox2x64", _Philox2x64SIMD, _Philox2x64Native,
+)
+
+
 # ── Factory functions ───────────────────────────────────────────────────────
 # Each returns a real np.random.Generator.
 
@@ -411,6 +507,78 @@ def ChaCha20Native(
     return Generator(ChaCha20NativeBitGenerator(seed_or_key, counter, nonce))
 
 
+def Philox4x32(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox4x32-10 (SIMD dispatch)."""
+    return Generator(Philox4x32SIMDBitGenerator(seed_or_key, counter))
+
+
+def Philox2x32(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox2x32-10 (SIMD dispatch)."""
+    return Generator(Philox2x32SIMDBitGenerator(seed_or_key, counter))
+
+
+def Philox4x64(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox4x64-10 (SIMD dispatch)."""
+    return Generator(Philox4x64SIMDBitGenerator(seed_or_key, counter))
+
+
+def Philox2x64(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox2x64-10 (SIMD dispatch)."""
+    return Generator(Philox2x64SIMDBitGenerator(seed_or_key, counter))
+
+
+def Philox4x32Native(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox4x32-10 (compile-time best arch)."""
+    if Philox4x32NativeBitGenerator is None:
+        raise RuntimeError("Philox4x32Native not available on this platform")
+    return Generator(Philox4x32NativeBitGenerator(seed_or_key, counter))
+
+
+def Philox2x32Native(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox2x32-10 (compile-time best arch)."""
+    if Philox2x32NativeBitGenerator is None:
+        raise RuntimeError("Philox2x32Native not available on this platform")
+    return Generator(Philox2x32NativeBitGenerator(seed_or_key, counter))
+
+
+def Philox4x64Native(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox4x64-10 (compile-time best arch)."""
+    if Philox4x64NativeBitGenerator is None:
+        raise RuntimeError("Philox4x64Native not available on this platform")
+    return Generator(Philox4x64NativeBitGenerator(seed_or_key, counter))
+
+
+def Philox2x64Native(
+    seed_or_key: int | Sequence[int] = 0,
+    counter: int | Sequence[int] = 0,
+) -> np.random.Generator:
+    """Return ``np.random.Generator`` backed by Philox2x64-10 (compile-time best arch)."""
+    if Philox2x64NativeBitGenerator is None:
+        raise RuntimeError("Philox2x64Native not available on this platform")
+    return Generator(Philox2x64NativeBitGenerator(seed_or_key, counter))
+
+
 # ── Global default generator ───────────────────────────────────────────────
 # Provides a module-level RNG that can be used as a drop-in replacement for
 # numpy.random functions.  Seed once, use everywhere — zero code changes.
@@ -444,6 +612,10 @@ def seed(s: int = 42, *, generator: str = "XoshiroSIMD") -> None:
         "ChaCha8": lambda: ChaCha8(s),
         "ChaCha12": lambda: ChaCha12(s),
         "ChaCha20": lambda: ChaCha20(s),
+        "Philox4x32": lambda: Philox4x32(s),
+        "Philox2x32": lambda: Philox2x32(s),
+        "Philox4x64": lambda: Philox4x64(s),
+        "Philox2x64": lambda: Philox2x64(s),
     }
     if generator not in factories:
         raise ValueError(f"Unknown generator {generator!r}")
@@ -515,6 +687,14 @@ __all__ = [
     "ChaCha8Native",
     "ChaCha12Native",
     "ChaCha20Native",
+    "Philox4x32",
+    "Philox2x32",
+    "Philox4x64",
+    "Philox2x64",
+    "Philox4x32Native",
+    "Philox2x32Native",
+    "Philox4x64Native",
+    "Philox2x64Native",
     # BitGenerator classes (for direct use / isinstance checks)
     "SplitMixBitGenerator",
     "XoshiroBitGenerator",
@@ -526,6 +706,14 @@ __all__ = [
     "ChaCha8NativeBitGenerator",
     "ChaCha12NativeBitGenerator",
     "ChaCha20NativeBitGenerator",
+    "Philox4x32SIMDBitGenerator",
+    "Philox2x32SIMDBitGenerator",
+    "Philox4x64SIMDBitGenerator",
+    "Philox2x64SIMDBitGenerator",
+    "Philox4x32NativeBitGenerator",
+    "Philox2x32NativeBitGenerator",
+    "Philox4x64NativeBitGenerator",
+    "Philox2x64NativeBitGenerator",
     # Global generator
     "seed",
     "default_rng",

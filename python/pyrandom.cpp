@@ -13,6 +13,7 @@
 #include "random/xoshiro_scalar.hpp"
 #include "random/xoshiro_simd.hpp"
 #include "random/chacha_simd.hpp"
+#include "random/philox_simd.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -32,6 +33,14 @@ template <typename T> struct is_chacha : std::false_type {};
 template <std::uint8_t R> struct is_chacha<prng::ChaChaSIMD<R>> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 template <std::uint8_t R> struct is_chacha<prng::ChaChaNative<R>> : std::true_type {};
+#endif
+
+template <typename T> struct is_philox : std::false_type {};
+template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
+struct is_philox<prng::PhiloxSIMD<N, W, R>> : std::true_type {};
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
+template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
+struct is_philox<prng::PhiloxNative<N, W, R>> : std::true_type {};
 #endif
 
 // ---------------------------------------------------------------------------
@@ -420,6 +429,70 @@ void PyBitGenerator<prng::ChaChaNative<20>>::set_state(nb::dict d) {
 #endif
 
 // ---------------------------------------------------------------------------
+// State serialization helper for Philox SIMD/Native
+template <typename Rng>
+nb::dict get_philox_state(const Rng &rng) {
+  using word_type = typename Rng::word_type;
+  auto ctr = rng.getCounterForSerde();
+  auto key = rng.getKey();
+  const auto &cache = rng.cache();
+  nb::dict d;
+  d["counter"] = std::vector<word_type>(ctr.begin(), ctr.end());
+  d["key"] = std::vector<word_type>(key.begin(), key.end());
+  d["cache"] = std::vector<uint64_t>(cache.begin(), cache.end());
+  d["cache_index"] = rng.cache_index();
+  return d;
+}
+
+template <typename Rng>
+void set_philox_state(Rng &rng, nb::dict d) {
+  using word_type = typename Rng::word_type;
+  auto cv = nb::cast<std::vector<word_type>>(d["counter"]);
+  auto kv = nb::cast<std::vector<word_type>>(d["key"]);
+  typename Rng::counter_type ctr;
+  typename Rng::key_type key;
+  for (std::size_t i = 0; i < ctr.size() && i < cv.size(); ++i) ctr[i] = cv[i];
+  for (std::size_t i = 0; i < key.size() && i < kv.size(); ++i) key[i] = kv[i];
+  rng.setState(ctr, key);
+  auto cache_vec = nb::cast<std::vector<uint64_t>>(d["cache"]);
+  auto &cache = rng.cache();
+  for (std::size_t i = 0; i < cache.size() && i < cache_vec.size(); ++i)
+    cache[i] = cache_vec[i];
+  rng.set_cache_index(nb::cast<uint8_t>(d["cache_index"]));
+}
+
+// Philox SIMD state specializations for all four NxW combos
+using Philox4x32SIMD_t = prng::PhiloxSIMD<4, 32, 10>;
+using Philox2x32SIMD_t = prng::PhiloxSIMD<2, 32, 10>;
+using Philox4x64SIMD_t = prng::PhiloxSIMD<4, 64, 10>;
+using Philox2x64SIMD_t = prng::PhiloxSIMD<2, 64, 10>;
+
+template <> nb::dict PyBitGenerator<Philox4x32SIMD_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox4x32SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox2x32SIMD_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox2x32SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox4x64SIMD_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox4x64SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox2x64SIMD_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox2x64SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
+using Philox4x32Native_t = prng::PhiloxNative<4, 32, 10>;
+using Philox2x32Native_t = prng::PhiloxNative<2, 32, 10>;
+using Philox4x64Native_t = prng::PhiloxNative<4, 64, 10>;
+using Philox2x64Native_t = prng::PhiloxNative<2, 64, 10>;
+
+template <> nb::dict PyBitGenerator<Philox4x32Native_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox4x32Native_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox2x32Native_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox2x32Native_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox4x64Native_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox4x64Native_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+template <> nb::dict PyBitGenerator<Philox2x64Native_t>::get_state() const { return get_philox_state(rng); }
+template <> void PyBitGenerator<Philox2x64Native_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
+#endif
+
+// ---------------------------------------------------------------------------
 // Registration helpers to reduce boilerplate.
 
 // Base registration: capsule, random_raw, state, fill methods.
@@ -553,5 +626,73 @@ NB_MODULE(pyrandom_ext, m) {
                   .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                        "counter"_a, "nonce"_a);
   register_base<prng::ChaChaNative<20>>(c20n);
+#endif
+
+  // Philox SIMD variants — accept both (seed) and (key, counter)
+  using PyPhilox4x32SIMD = PyBitGenerator<Philox4x32SIMD_t>;
+  using key4x32_t = std::array<uint32_t, 2>;
+  using ctr4x32_t = std::array<uint32_t, 4>;
+  auto p4x32s = nb::class_<PyPhilox4x32SIMD>(m, "_Philox4x32SIMD")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key4x32_t, ctr4x32_t>(), "key"_a, "counter"_a);
+  register_base<Philox4x32SIMD_t>(p4x32s);
+
+  using PyPhilox2x32SIMD = PyBitGenerator<Philox2x32SIMD_t>;
+  using key2x32_t = std::array<uint32_t, 1>;
+  using ctr2x32_t = std::array<uint32_t, 2>;
+  auto p2x32s = nb::class_<PyPhilox2x32SIMD>(m, "_Philox2x32SIMD")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key2x32_t, ctr2x32_t>(), "key"_a, "counter"_a);
+  register_base<Philox2x32SIMD_t>(p2x32s);
+
+  using PyPhilox4x64SIMD = PyBitGenerator<Philox4x64SIMD_t>;
+  using key4x64_t = std::array<uint64_t, 2>;
+  using ctr4x64_t = std::array<uint64_t, 4>;
+  auto p4x64s = nb::class_<PyPhilox4x64SIMD>(m, "_Philox4x64SIMD")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key4x64_t, ctr4x64_t>(), "key"_a, "counter"_a);
+  register_base<Philox4x64SIMD_t>(p4x64s);
+
+  using PyPhilox2x64SIMD = PyBitGenerator<Philox2x64SIMD_t>;
+  using key2x64_t = std::array<uint64_t, 1>;
+  using ctr2x64_t = std::array<uint64_t, 2>;
+  auto p2x64s = nb::class_<PyPhilox2x64SIMD>(m, "_Philox2x64SIMD")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key2x64_t, ctr2x64_t>(), "key"_a, "counter"_a);
+  register_base<Philox2x64SIMD_t>(p2x64s);
+
+#ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
+  // Philox Native variants
+  using PyPhilox4x32Native = PyBitGenerator<Philox4x32Native_t>;
+  auto p4x32n = nb::class_<PyPhilox4x32Native>(m, "_Philox4x32Native")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key4x32_t, ctr4x32_t>(), "key"_a, "counter"_a);
+  register_base<Philox4x32Native_t>(p4x32n);
+
+  using PyPhilox2x32Native = PyBitGenerator<Philox2x32Native_t>;
+  auto p2x32n = nb::class_<PyPhilox2x32Native>(m, "_Philox2x32Native")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key2x32_t, ctr2x32_t>(), "key"_a, "counter"_a);
+  register_base<Philox2x32Native_t>(p2x32n);
+
+  using PyPhilox4x64Native = PyBitGenerator<Philox4x64Native_t>;
+  auto p4x64n = nb::class_<PyPhilox4x64Native>(m, "_Philox4x64Native")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key4x64_t, ctr4x64_t>(), "key"_a, "counter"_a);
+  register_base<Philox4x64Native_t>(p4x64n);
+
+  using PyPhilox2x64Native = PyBitGenerator<Philox2x64Native_t>;
+  auto p2x64n = nb::class_<PyPhilox2x64Native>(m, "_Philox2x64Native")
+                    .def(nb::init<uint64_t>(), "seed"_a)
+                    .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "counter"_a)
+                    .def(nb::init<key2x64_t, ctr2x64_t>(), "key"_a, "counter"_a);
+  register_base<Philox2x64Native_t>(p2x64n);
 #endif
 }
