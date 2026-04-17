@@ -28,21 +28,29 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 
-CPMAddPackage(
-        NAME benchmark
-        GITHUB_REPOSITORY google/benchmark
-        VERSION 1.9.1
-        GIT_SHALLOW YES
-        GIT_PROGRESS YES
-        EXCLUDE_FROM_ALL YES
-        SYSTEM
-)
-
 if (ENABLE_CODSPEED)
+    # codspeed-cpp ships its own fork of google/benchmark under google_benchmark/.
+    # The fork's CMakeLists.txt unconditionally pulls in codspeed-cpp's `core/`,
+    # which defines an option(ENABLE_TESTS) that clashes with our own. Shield it
+    # via a local ENABLE_TESTS=OFF (CMP0077 NEW -> option() respects normal vars).
     CPMAddPackage(
             NAME codspeed
             GITHUB_REPOSITORY CodSpeedHQ/codspeed-cpp
             GIT_TAG main
+            GIT_SHALLOW YES
+            GIT_PROGRESS YES
+            DOWNLOAD_ONLY YES
+    )
+    set(ENABLE_TESTS OFF)
+    add_subdirectory(${codspeed_SOURCE_DIR}/google_benchmark
+                     ${CMAKE_BINARY_DIR}/_deps/codspeed-benchmark-build
+                     EXCLUDE_FROM_ALL)
+    set(ENABLE_TESTS ON)
+else()
+    CPMAddPackage(
+            NAME benchmark
+            GITHUB_REPOSITORY google/benchmark
+            VERSION 1.9.1
             GIT_SHALLOW YES
             GIT_PROGRESS YES
             EXCLUDE_FROM_ALL YES
@@ -131,13 +139,9 @@ target_include_directories(benchmarks PRIVATE ${TEST_INCLUDE_DIR} xsimd::xsimd)
 target_compile_options(benchmarks PRIVATE ${COMPILE_OPTIONS})
 target_link_options(benchmarks PRIVATE ${LINK_OPTIONS})
 
+target_link_libraries(benchmarks PRIVATE simdrng benchmark::benchmark_main)
 if (ENABLE_CODSPEED)
-    # codspeed-cpp ships a drop-in replacement for benchmark::benchmark_main
-    # that emits CodSpeed instrumentation instead of timing output.
-    target_link_libraries(benchmarks PRIVATE simdrng codspeed::codspeed_benchmark)
     target_compile_definitions(benchmarks PRIVATE SIMDRNG_CODSPEED=1)
-else()
-    target_link_libraries(benchmarks PRIVATE simdrng benchmark::benchmark_main)
 endif()
 
 if (MARCH_NATIVE)

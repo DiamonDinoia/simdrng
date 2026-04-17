@@ -62,17 +62,15 @@ include(CheckLinkerFlag)
 include(cmake/CompilerOptions.cmake)
 
 # List candidate standards in descending order.
+# Use CMAKE_CXX_COMPILE_FEATURES (portable across MSVC/GCC/Clang) rather than
+# probing raw -std=c++XX flags, which MSVC doesn't accept.
 set(CXX_STANDARDS "26" "23" "20" "17")
 set(SUPPORTED_CXX_STANDARD "")
 
 foreach (std IN LISTS CXX_STANDARDS)
-    set(flag "-std=c++${std}")
-    # Create a unique variable name for each check.
-    string(CONCAT var "COMPILER_SUPPORTS_CXX" std)
-    check_cxx_compiler_flag(${flag} ${var})
-    if (${var})
+    if ("cxx_std_${std}" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
         set(SUPPORTED_CXX_STANDARD ${std})
-        break()  # Use the highest supported standard.
+        break()
     endif ()
 endforeach ()
 

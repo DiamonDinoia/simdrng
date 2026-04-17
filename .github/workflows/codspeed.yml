@@ -30,9 +30,10 @@ jobs:
       - name: Configure with CodSpeed instrumentation
         run: >
           cmake -S . -B build/codspeed -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_FLAGS="-mavx2 -mfma -O3"
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_FLAGS="-mavx2 -mfma"
           -DENABLE_CODSPEED=ON
+          -DCODSPEED_MODE=instrumentation
           -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
 
       - name: Build
