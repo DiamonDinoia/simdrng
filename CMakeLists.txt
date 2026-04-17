@@ -9,7 +9,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 
 set(CPM_DOWNLOAD_VERSION 0.42.0)
-set(XSIMD_DOWNLOAD_VERSION 1e7c3b9e37a4bba260f232c6561fa062f3df5f16)
+set(XSIMD_DOWNLOAD_VERSION feat/mulhilo)
 set(POET_DOWNLOAD_VERSION 4e0c50b75224b9916cb8062a75d81ab7cc403df1)
 
 option(ENABLE_TESTS "Enable tests" ON)
@@ -34,9 +34,9 @@ include(${CPM_DOWNLOAD_LOCATION})
 
 CPMAddPackage(
         NAME xsimd
-        GITHUB_REPOSITORY xtensor-stack/xsimd
+        GITHUB_REPOSITORY DiamonDinoia/xsimd
         GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
-        GIT_SHALLOW YES
+        GIT_SHALLOW NO
         GIT_PROGRESS YES
         EXCLUDE_FROM_ALL YES
 )
@@ -132,7 +132,7 @@ else ()
     message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif ()
 
-foreach (PRNG_TYPE IN ITEMS xoshiro chacha)
+foreach (PRNG_TYPE IN ITEMS xoshiro chacha philox)
     foreach (VARIANT IN LISTS PRNG_DISPATCH_VARIANTS)
         string(REPLACE "-" "_" TARGET_SUFFIX "${VARIANT}")
         set(SIMD_SOURCE_TARGET "${PRNG_TYPE}_simd_source_${TARGET_SUFFIX}")

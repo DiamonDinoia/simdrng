@@ -3,6 +3,8 @@
 #include <random>
 #include <random/chacha.hpp>
 #include <random/chacha_simd.hpp>
+#include <random/philox.hpp>
+#include <random/philox_simd.hpp>
 #include <random/xoshiro_simd.hpp>
 
 #include "xoshiro256plusplus.c"
@@ -47,6 +49,21 @@ int main() {
   ScalarChaCha20 chacha_scalar_dist(chacha_key, chacha_counter, chacha_nonce);
   SimdChaCha20 chacha_simd_dist(chacha_key, chacha_counter, chacha_nonce);
 
+  // Philox generators
+  using ScalarPhilox4x32 = prng::Philox<4, 32, 10>;
+  using SimdPhilox4x32 = prng::PhiloxSIMD<4, 32, 10>;
+  using ScalarPhilox4x64 = prng::Philox<4, 64, 10>;
+  using SimdPhilox4x64 = prng::PhiloxSIMD<4, 64, 10>;
+  std::cout << "Philox SIMD width: " << SimdPhilox4x32(0).getSIMDSize() << std::endl;
+  ScalarPhilox4x32 philox4x32_scalar(seed);
+  SimdPhilox4x32 philox4x32_simd(seed);
+  ScalarPhilox4x32 philox4x32_scalar_double(seed);
+  SimdPhilox4x32 philox4x32_simd_double(seed);
+  ScalarPhilox4x64 philox4x64_scalar(seed);
+  SimdPhilox4x64 philox4x64_simd(seed);
+  ScalarPhilox4x64 philox4x64_scalar_double(seed);
+  SimdPhilox4x64 philox4x64_simd_double(seed);
+
   s[0] = reference.getState()[0];
   s[1] = reference.getState()[1];
   s[2] = reference.getState()[2];
@@ -87,6 +104,26 @@ int main() {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_simd_uint64());
       }
+    })
+    .run("Philox4x32 scalar UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_scalar());
+      }
+    })
+    .run("Philox4x32 dispatch UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_simd());
+      }
+    })
+    .run("Philox4x64 scalar UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_scalar());
+      }
+    })
+    .run("Philox4x64 dispatch UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_simd());
+      }
     });
 
   make_bench("Unit-interval doubles", "sample", static_cast<double>(iterations))
@@ -108,6 +145,26 @@ int main() {
     .run("ChaCha20 Dispatch DOUBLE", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_simd_double.uniform());
+      }
+    })
+    .run("Philox4x32 scalar DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_scalar_double.uniform());
+      }
+    })
+    .run("Philox4x32 dispatch DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_simd_double.uniform());
+      }
+    })
+    .run("Philox4x64 scalar DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_scalar_double.uniform());
+      }
+    })
+    .run("Philox4x64 dispatch DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_simd_double.uniform());
       }
     });
 
@@ -147,6 +204,13 @@ int main() {
   NativeChaCha20 chacha_native_double(chacha_key, chacha_counter, chacha_nonce);
   NativeChaCha20 chacha_native_dist(chacha_key, chacha_counter, chacha_nonce);
 
+  using NativePhilox4x32 = prng::PhiloxNative<4, 32, 10>;
+  using NativePhilox4x64 = prng::PhiloxNative<4, 64, 10>;
+  NativePhilox4x32 philox4x32_native_uint64(seed);
+  NativePhilox4x32 philox4x32_native_double(seed);
+  NativePhilox4x64 philox4x64_native_uint64(seed);
+  NativePhilox4x64 philox4x64_native_double(seed);
+
   make_bench("Native UINT64 generation", "sample", static_cast<double>(iterations))
     .run("XoshiroNative UINT64", [&] {
       for (int i = 0; i < iterations; ++i) {
@@ -156,6 +220,16 @@ int main() {
     .run("ChaCha20 native UINT64", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_native_uint64());
+      }
+    })
+    .run("Philox4x32 native UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_native_uint64());
+      }
+    })
+    .run("Philox4x64 native UINT64", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_native_uint64());
       }
     });
 
@@ -168,6 +242,16 @@ int main() {
     .run("ChaCha20 native DOUBLE", [&] {
       for (int i = 0; i < iterations; ++i) {
         doNotOptimizeAway(chacha_native_double.uniform());
+      }
+    })
+    .run("Philox4x32 native DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x32_native_double.uniform());
+      }
+    })
+    .run("Philox4x64 native DOUBLE", [&] {
+      for (int i = 0; i < iterations; ++i) {
+        doNotOptimizeAway(philox4x64_native_double.uniform());
       }
     });
 
