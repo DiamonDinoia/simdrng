@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Linux x86: full compiler x SIMD-ISA matrix.
-  # AVX-512 runs under Intel SDE since GitHub runners don't guarantee AVX-512.
+  # Linux x86. The library builds SSE2 / AVX2 / AVX-512 variants from a single
+  # compile (per-arch TUs in src/, selected at runtime via xsimd::dispatch).
+  # So the matrix varies RUNTIME ISA via Intel SDE, not compile flags.
   # ---------------------------------------------------------------------------
   linux-x86:
     name: linux-x86 / ${{ matrix.compiler }}-${{ matrix.version }} / ${{ matrix.isa }}
@@ -23,14 +24,16 @@ jobs:
       matrix:
         compiler: [gcc, clang]
         version: ["14", "20"]
-        isa: [sse4.2, avx2, avx512]
+        # native = whatever the runner exposes (AVX2 today). SDE variants emulate
+        # specific microarchitectures so xsimd::dispatch selects each SIMD tier.
+        isa: [native, sse2, avx2, avx512]
         exclude:
           - { compiler: gcc, version: "20" }
           - { compiler: clang, version: "14" }
         include:
           # Older compilers: single ISA to contain matrix cost.
-          - { compiler: gcc, version: "13", isa: avx2 }
-          - { compiler: clang, version: "18", isa: avx2 }
+          - { compiler: gcc, version: "13", isa: native }
+          - { compiler: clang, version: "18", isa: native }
     steps:
       - uses: actions/checkout@v6
 
@@ -44,56 +47,53 @@ jobs:
       - name: Install libpfm4
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
 
-      - name: Setup Intel SDE (AVX-512 runs)
-        if: matrix.isa == 'avx512'
-        uses: petarpetrovt/setup-sde@v3
+      - name: Setup Intel SDE (emulated runs)
+        if: matrix.isa != 'native'
+        uses: petarpetrovt/setup-sde@v3.0
         with:
           environmentVariableName: SDE_PATH
 
-      - name: Compute flags
+      - name: Compute emulator
         id: flags
         run: |
           case "${{ matrix.isa }}" in
-            sse4.2) echo "cxx=-msse4.2" >> "$GITHUB_OUTPUT" ;;
-            avx2)   echo "cxx=-mavx2 -mfma -mbmi2" >> "$GITHUB_OUTPUT" ;;
-            avx512) echo "cxx=-mavx512f -mavx512bw -mavx512dq -mavx512vl -mavx2 -mfma" >> "$GITHUB_OUTPUT" ;;
+            native) echo "emulator=" >> "$GITHUB_OUTPUT" ;;
+            sse2)   echo "emulator=${SDE_PATH}/sde64;-p4p;--"  >> "$GITHUB_OUTPUT" ;;  # Pentium 4 Prescott: SSE3 max
+            avx2)   echo "emulator=${SDE_PATH}/sde64;-hsw;--"  >> "$GITHUB_OUTPUT" ;;  # Haswell: AVX2
+            avx512) echo "emulator=${SDE_PATH}/sde64;-skx;--"  >> "$GITHUB_OUTPUT" ;;  # Skylake-X: AVX-512 F/CD/BW/DQ/VL
           esac
-          if [ "${{ matrix.isa }}" = "avx512" ]; then
-            echo "emulator=${SDE_PATH}/sde64;-future;--" >> "$GITHUB_OUTPUT"
-          else
-            echo "emulator=" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Configure
-        run: >
-          cmake -S . -B build/release -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF -DBUILD_EXAMPLES=ON
-          -DMARCH_NATIVE=OFF
-          -DCMAKE_CXX_FLAGS="${{ steps.flags.outputs.cxx }}"
-          -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
+        # MARCH_NATIVE=OFF so binaries don't use instructions unavailable under
+        # SDE's emulated CPU (e.g. AVX2 on a -p4p run).
+        run: cmake --preset release -DENABLE_PYTHON=OFF -DMARCH_NATIVE=OFF
+             -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
 
       - name: Build
         run: cmake --build build/release --parallel
 
       - name: Test
-        run: ctest --test-dir build/release --output-on-failure
+        # example_xoshiro_native is compiled with -march=native (host CPU),
+        # so it uses instructions SDE's emulated older CPU doesn't support.
+        # Exclude it on emulated runs.
+        run: >
+          ctest --test-dir build/release --output-on-failure
+          ${{ matrix.isa != 'native' && '-E example_xoshiro_native' || '' }}
 
   # ---------------------------------------------------------------------------
-  # Linux ARM: native NEON + SVE via qemu-user (same arch, overridden CPU).
+  # Linux ARM: native NEON. SVE would require a library-side SVE dispatch
+  # variant (CMakeLists.txt PRNG_DISPATCH_VARIANTS currently only lists
+  # neon64 on aarch64); covered in a follow-up.
   # ---------------------------------------------------------------------------
   linux-arm:
-    name: linux-arm / ${{ matrix.compiler }}-${{ matrix.version }} / ${{ matrix.isa }}
+    name: linux-arm / ${{ matrix.compiler }}-${{ matrix.version }}
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc, clang]
-        version: ["14", "20"]
-        isa: [neon, sve]
-        exclude:
-          - { compiler: gcc, version: "20" }
-          - { compiler: clang, version: "14" }
+        include:
+          - { compiler: gcc,   version: "14" }
+          - { compiler: clang, version: "20" }
     steps:
       - uses: actions/checkout@v6
 
@@ -104,35 +104,11 @@ jobs:
           cmake: true
           ninja: true
 
-      - name: Install deps (libpfm4 + qemu for SVE)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpfm4-dev
-          if [ "${{ matrix.isa }}" = "sve" ]; then
-            sudo apt-get install -y qemu-user-static
-          fi
-
-      - name: Compute flags
-        id: flags
-        run: |
-          case "${{ matrix.isa }}" in
-            neon) echo "cxx=-march=armv8-a" >> "$GITHUB_OUTPUT" ;;
-            sve)  echo "cxx=-march=armv8-a+sve" >> "$GITHUB_OUTPUT" ;;
-          esac
-          if [ "${{ matrix.isa }}" = "sve" ]; then
-            echo "emulator=/usr/bin/qemu-aarch64-static;-cpu;max,sve=on,sve256=on" >> "$GITHUB_OUTPUT"
-          else
-            echo "emulator=" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install libpfm4
+        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
 
       - name: Configure
-        run: >
-          cmake -S . -B build/release -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF -DBUILD_EXAMPLES=ON
-          -DMARCH_NATIVE=OFF
-          -DCMAKE_CXX_FLAGS="${{ steps.flags.outputs.cxx }}"
-          -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
+        run: cmake --preset release -DENABLE_PYTHON=OFF -DMARCH_NATIVE=OFF
 
       - name: Build
         run: cmake --build build/release --parallel

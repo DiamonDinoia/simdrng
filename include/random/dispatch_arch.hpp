@@ -16,11 +16,14 @@ namespace prng {
 // must use the concrete rvv<128> to match the exported symbols.
 using rvv128 = xsimd::detail::rvv<128>;
 
-// Check avx (not sse2) because newer x86 archs like avxvnni inherit from
-// avx/avx2 but xsimd's hierarchy does not chain down to sse2.
+// xsimd's arch hierarchy splits the x86 family: avx* derive from `common`,
+// and avx512* derive from `common` independently (avx512bw : avx512dq :
+// avx512cd : avx512f : common). So avx512bw is NOT a descendant of sse2 or
+// avx. Check all three roots to cover every x86 ISA variant.
 using dispatch_arch_list = std::conditional_t<
     std::is_base_of_v<xsimd::sse2, xsimd::best_arch> ||
-    std::is_base_of_v<xsimd::avx, xsimd::best_arch>,
+    std::is_base_of_v<xsimd::avx, xsimd::best_arch> ||
+    std::is_base_of_v<xsimd::avx512f, xsimd::best_arch>,
     xsimd::arch_list<xsimd::avx512f, xsimd::avx2, xsimd::sse2>,
     std::conditional_t<
         std::is_base_of_v<xsimd::neon, xsimd::best_arch>,
