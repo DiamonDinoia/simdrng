@@ -169,8 +169,8 @@ public:
     result_type s1 = 0;
     result_type s2 = 0;
     result_type s3 = 0;
-    for (unsigned long i : LONG_JUMP)
-      for (int b = 0; b < 64; b++) {
+    for (const auto i : LONG_JUMP)
+      for (auto b = 0; b < 64; b++) {
         if (i & result_type{1} << b) {
           s0 ^= m_state[0];
           s1 ^= m_state[1];
