@@ -116,9 +116,11 @@ target_compile_features(simdrng INTERFACE cxx_std_20)
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(PRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
     if (MSVC)
-        # MSVC has no -march equivalent. /arch:SSE2 is the x64 default (baseline).
-        # /arch:AVX2 covers v3 (AVX2+FMA); /arch:AVX512 covers v4.
-        set(PRNG_DISPATCH_FLAGS_x86_64     /arch:SSE2)
+        # MSVC has no -march equivalent and doesn't define __SSE2__ even
+        # though x64 is SSE2 baseline; define it explicitly so the dispatch
+        # TUs pick the right template instantiation. MSVC does define
+        # __AVX2__ under /arch:AVX2 and __AVX512F__ under /arch:AVX512.
+        set(PRNG_DISPATCH_FLAGS_x86_64     /D__SSE2__)
         set(PRNG_DISPATCH_FLAGS_x86_64_v3  /arch:AVX2)
         set(PRNG_DISPATCH_FLAGS_x86_64_v4  /arch:AVX512)
     else ()
