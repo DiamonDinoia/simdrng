@@ -192,7 +192,12 @@ jobs:
             clang-tidy -p build/release $files
           fi
       - name: cppcheck (headers)
-        run: cppcheck --enable=warning,performance,portability --inline-suppr --std=c++20 --quiet include/
+        # Explicit file list: cppcheck's default extension set doesn't include .hpp,
+        # so passing include/ alone makes it find nothing and exit 1.
+        run: |
+          find include -type f \( -name '*.hpp' -o -name '*.h' \) -print0 \
+            | xargs -0 cppcheck --enable=warning,performance,portability \
+                --inline-suppr --language=c++ --std=c++20 --quiet -Iinclude
 
   coverage:
     name: Coverage (gcc + lcov)
@@ -214,8 +219,12 @@ jobs:
       - run: cmake --build build/cov --parallel
       - run: ctest --test-dir build/cov --output-on-failure
       - name: Capture coverage
+        # aminya/setup-cpp installs gcc-14 but /usr/bin/gcov stays at the
+        # stock runner version; lcov's geninfo refuses the mismatch. Point
+        # it at the matching gcov-14.
         run: |
-          lcov --directory build/cov --capture --output-file coverage.info
+          lcov --gcov-tool "$(command -v gcov-14)" --directory build/cov \
+               --capture --output-file coverage.info
           lcov --remove coverage.info '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
       - uses: codecov/codecov-action@v6
         with:

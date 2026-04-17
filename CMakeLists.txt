@@ -115,9 +115,17 @@ target_compile_features(simdrng INTERFACE cxx_std_20)
 # xsimd::dispatch picks the best available at runtime.
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(PRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
-    set(PRNG_DISPATCH_FLAGS_x86_64     -march=x86-64   -mtune=generic)
-    set(PRNG_DISPATCH_FLAGS_x86_64_v3  -march=x86-64-v3 -mtune=generic)
-    set(PRNG_DISPATCH_FLAGS_x86_64_v4  -march=x86-64-v4 -mtune=generic)
+    if (MSVC)
+        # MSVC has no -march equivalent. /arch:SSE2 is the x64 default (baseline).
+        # /arch:AVX2 covers v3 (AVX2+FMA); /arch:AVX512 covers v4.
+        set(PRNG_DISPATCH_FLAGS_x86_64     /arch:SSE2)
+        set(PRNG_DISPATCH_FLAGS_x86_64_v3  /arch:AVX2)
+        set(PRNG_DISPATCH_FLAGS_x86_64_v4  /arch:AVX512)
+    else ()
+        set(PRNG_DISPATCH_FLAGS_x86_64     -march=x86-64   -mtune=generic)
+        set(PRNG_DISPATCH_FLAGS_x86_64_v3  -march=x86-64-v3 -mtune=generic)
+        set(PRNG_DISPATCH_FLAGS_x86_64_v4  -march=x86-64-v4 -mtune=generic)
+    endif ()
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(PRNG_DISPATCH_VARIANTS "neon64")
     set(PRNG_DISPATCH_FLAGS_neon64 "")  # NEON is baseline on aarch64
