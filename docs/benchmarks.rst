@@ -8,12 +8,12 @@ committed to the orphan ``benchmark-results`` branch.
 
 The latest charts:
 
-.. image:: https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/overview.svg
-   :alt: Throughput overview
+.. image:: https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/overview.svg
+   :alt: Throughput overview (gcc-15)
    :align: center
 
-.. image:: https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/scalar_vs_simd.svg
-   :alt: Scalar vs SIMD speedup
+.. image:: https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/scalar_vs_simd.svg
+   :alt: Scalar vs SIMD speedup (gcc-15)
    :align: center
 
 CodSpeed tracks per-benchmark CPU-cycle regressions on every PR:
