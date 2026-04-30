@@ -10,7 +10,7 @@ endif ()
 
 set(CPM_DOWNLOAD_VERSION 0.42.0)
 set(XSIMD_DOWNLOAD_VERSION feat/mulhilo)
-set(POET_DOWNLOAD_VERSION 4e0c50b75224b9916cb8062a75d81ab7cc403df1)
+set(POET_DOWNLOAD_VERSION b55580fd1f17df500abb8afb16cd4983e66a27ac)
 
 option(ENABLE_TESTS "Enable tests" ON)
 option(ENABLE_PYTHON "Enable Python bindings" ON)
@@ -48,7 +48,7 @@ CPMAddPackage(
         NAME poet
         GITHUB_REPOSITORY DiamonDinoia/poet
         GIT_TAG ${POET_DOWNLOAD_VERSION}
-        GIT_SHALLOW YES
+        GIT_SHALLOW NO
         GIT_PROGRESS YES
         EXCLUDE_FROM_ALL YES
         OPTIONS
