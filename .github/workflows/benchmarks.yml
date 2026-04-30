@@ -43,11 +43,13 @@ jobs:
             --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES \
             --benchmark_format=json \
             --benchmark_out=results/${{ matrix.compiler }}/bench.json
+          lscpu | awk -F: '/Model name/ {sub(/^ +/,"",$2); print $2; exit}' \
+            > results/${{ matrix.compiler }}/cpu_model.txt
 
       - uses: actions/upload-artifact@v7
         with:
           name: bench-${{ matrix.compiler }}
-          path: results/${{ matrix.compiler }}/bench.json
+          path: results/${{ matrix.compiler }}/
           retention-days: 30
 
   publish:
@@ -88,6 +90,9 @@ jobs:
             compiler="${art##*/bench-}"
             mkdir -p "results/${compiler}"
             cp "${art}/bench.json" "results/${compiler}/${ts}.json"
+            if [ -f "${art}/cpu_model.txt" ]; then
+              cp "${art}/cpu_model.txt" "results/${compiler}/cpu_model.txt"
+            fi
           done
 
       - name: Regenerate charts
