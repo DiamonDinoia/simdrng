@@ -7,7 +7,7 @@ name = "simdrng"
 version = "0.0.0"
 description = "Vectorized random number generators (Xoshiro / SplitMix / ChaCha / Philox) with a numpy.random.Generator-compatible Python API"
 authors = [{ name = "Marco Barbone", email = "mbarbone@flatironinstitute.org" }]
-license = "MIT"
+license = "BSD-3-Clause-Attribution"
 readme = "../readme.md"
 requires-python = ">=3.10"
 dependencies = ["numpy"]

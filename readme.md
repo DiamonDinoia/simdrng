@@ -4,7 +4,7 @@
 [![Docs](https://readthedocs.org/projects/simdrng/badge/?version=latest)](https://simdrng.readthedocs.io/en/latest/)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json&project=DiamonDinoia/simdrng)](https://codspeed.io/DiamonDinoia/simdrng)
 [![codecov](https://codecov.io/gh/DiamonDinoia/simdrng/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/simdrng)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: BSD-3-Clause-Attribution](https://img.shields.io/badge/License-BSD--3--Clause--Attribution-blue.svg)](LICENSE)
 
 > **Note:** `simdrng` is pre-1.0 — the API may change before the first tagged release.
 
@@ -109,8 +109,8 @@ The full matrix runs in CI and is rendered to SVG on the
 branch; CodSpeed tracks regressions per-PR. See
 [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
-![Throughput overview](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/overview.svg)
+![Throughput overview (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/overview.svg)
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+BSD-3-Clause-Attribution — see [`LICENSE`](LICENSE).
