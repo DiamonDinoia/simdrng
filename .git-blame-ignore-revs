@@ -1,0 +1,8 @@
+# Revisions to ignore in `git blame` (bulk reformatting, no semantic change).
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub honours this file automatically in its blame view.
+
+# chore: repo-wide pre-commit reformat (clang-format/gersemi/darker/shfmt)
