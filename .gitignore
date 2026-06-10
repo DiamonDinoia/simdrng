@@ -16,6 +16,7 @@ shell.nix
 # Docs / bench artifacts
 docs/_build/
 docs/doxygen/
+docs/api_cpp_auto/
 results/
 
 # Python

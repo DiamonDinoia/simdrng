@@ -8,41 +8,107 @@
 
 > **Note:** `simdrng` is pre-1.0 — the API may change before the first tagged release.
 
-C++20 header-only (plus a tiny dispatch TU) library of scalar and SIMD-accelerated
-random number generators, with nanobind-powered Python bindings that drop directly
-into NumPy and SciPy.
+C++20 random number generators that run scalar **and** SIMD-accelerated, with
+nanobind-powered Python bindings that drop straight into NumPy and SciPy.
 
-## Generators
+- **Header-only** (plus one tiny dispatch TU for runtime SIMD selection); the
+  scalar path is dependency-free.
+- **Four generator families** — Xoshiro256++, SplitMix64, ChaCha, Philox — each
+  available scalar, runtime-SIMD-dispatched, and `-march=native`.
+- **Drop-in** with `std::uniform_int_distribution` and friends, plus a fast
+  `uniform()` returning a `double` in `[0, 1)`.
+- **Parallel-ready** — per-thread and per-node independent streams via
+  `thread_id` / `cluster_id`, or Philox's counter-based reproducibility.
+- **Python** — every generator is a `numpy.random.Generator` with a GIL-released
+  C++ bulk-fill fast path.
 
-| Family      | Scalar | SIMD dispatch | ``-march=native`` |
-|-------------|:------:|:-------------:|:-----------------:|
-| Xoshiro256++| ✅     | ✅            | ✅                |
-| SplitMix64  | ✅     | —             | —                 |
-| ChaCha 8/12/20 | ✅  | ✅            | ✅                |
-| Philox 2x/4x × 32/64 | ✅ | ✅       | ✅                |
+## Why simdrng
 
-All generators are compatible with ``std::uniform_int_distribution`` and friends.
-A ``uniform()`` method returning a `double` in ``[0, 1)`` is provided for a faster
-path than ``std::uniform_real_distribution``; see
-<https://prng.di.unimi.it/#remarks> for the rationale.
+General-purpose PRNGs are written one number at a time, leaving most of a modern
+CPU's vector units idle. simdrng pairs best-in-class scalar generators
+(Blackman & Vigna's xoshiro256++, the Random123 Philox counter-based design,
+the ChaCha cipher core) with hand-tuned SIMD backends, and picks the right
+implementation **at runtime** via [xsimd](https://github.com/xtensor-stack/xsimd)
+dispatch — so the same binary uses AVX-512 on a server and NEON on an ARM
+laptop with no recompilation. When you can commit to a target with
+`-march=native`, the `*Native` generators inline the widest available width
+directly. The result is NumPy-beating bulk throughput from C++ or Python while
+keeping single-value calls as fast as the reference scalar code.
 
-## Multi-threading and cluster environments
-
-Each generator takes optional ``thread_id`` and ``cluster_id`` parameters that
-produce independent streams per thread and per node:
+## Quick start
 
 ```cpp
 #include <simdrng/xoshiro.hpp>
 
-simdrng::Xoshiro rng(42, 1, 2);                     // seed, thread, cluster
-simdrng::Xoshiro rng(42, std::this_thread::get_id());
-simdrng::Xoshiro rng(42, omp_get_thread_num());     // OpenMP
+simdrng::Xoshiro rng(42);          // seed
+std::uint64_t x = rng();           // next 64-bit value
+double u = rng.uniform();          // double in [0, 1)
+```
+
+Bulk fill is where SIMD pays off. `XoshiroSIMD` refills an internal cache with
+wide SIMD batches, so a plain generate loop runs vectorised under the hood — no
+special bulk API to learn:
+
+```cpp
+#include <simdrng/xoshiro_simd.hpp>
+#include <vector>
+
+simdrng::XoshiroSIMD rng(42);
+std::vector<double> out(1'000'000);
+for (auto &x : out)
+  x = rng.uniform();              // cache refilled with SIMD batches
+```
+
+From Python it is a `numpy.random.Generator`:
+
+```python
+import simdrng
+
+rng = simdrng.XoshiroSIMD(seed=42)          # a numpy.random.Generator
+samples = rng.random(10_000_000)            # GIL-released C++ bulk fill
+```
+
+More runnable programs live in [`examples/`](examples/) (C++ and Python), and
+ready-to-run [Compiler Explorer links](https://github.com/DiamonDinoia/simdrng/tree/godbolt-links)
+are published to the `godbolt-links` branch.
+
+## Generators
+
+| Family               | Scalar | SIMD dispatch | `-march=native` |
+|----------------------|:------:|:-------------:|:---------------:|
+| Xoshiro256++         | ✅     | ✅            | ✅              |
+| SplitMix64           | ✅     | —             | —               |
+| ChaCha 8/12/20       | ✅     | ✅            | ✅              |
+| Philox 2x/4x × 32/64 | ✅     | ✅            | ✅              |
+
+All generators satisfy the standard `UniformRandomBitGenerator` requirements, so
+they compose with `std::uniform_int_distribution` and friends. The `uniform()`
+method returns a `double` in `[0, 1)` faster than
+`std::uniform_real_distribution`; see <https://prng.di.unimi.it/#remarks> for
+the rationale. Per-family guidance is in the
+[documentation](https://simdrng.readthedocs.io/en/latest/) (Guides section).
+
+## Parallel streams
+
+Each generator takes optional `thread_id` and `cluster_id` parameters that carve
+out independent, non-overlapping streams per thread and per node (via xoshiro's
+`jump()` / `long_jump()`):
+
+```cpp
+#include <simdrng/xoshiro.hpp>
+
+simdrng::Xoshiro rng(42, 1, 2);                            // seed, thread, cluster
+simdrng::Xoshiro rng(42, omp_get_thread_num());            // OpenMP
 simdrng::Xoshiro rng(42, omp_get_thread_num(), MPI_rank);  // MPI + OpenMP
 ```
 
-See [`examples/cpp/threaded_openmp.cpp`](examples/cpp/threaded_openmp.cpp).
+Philox takes the counter-based route instead: each work item derives its own
+sub-stream from `(seed, counter)` with no coordination — see
+[`examples/cpp/philox_counter_based.cpp`](examples/cpp/philox_counter_based.cpp).
+For the threaded example, see
+[`examples/cpp/threaded_openmp.cpp`](examples/cpp/threaded_openmp.cpp).
 
-## Build
+## Install
 
 ```sh
 git clone https://github.com/DiamonDinoia/simdrng.git
@@ -52,29 +118,28 @@ cmake --build build/release
 ctest --preset test
 ```
 
-CMake options:
-
-| Option                   | Default | Purpose                                              |
-|--------------------------|---------|------------------------------------------------------|
-| `SIMDRNG_WITH_XSIMD`     | ON      | Build the SIMD backends with xsimd (OFF = scalar-only header library) |
-| `SIMDRNG_BUILD_TESTS`    | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`) |
-| `SIMDRNG_BUILD_PYTHON`   | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`) |
-| `SIMDRNG_BUILD_EXAMPLES` | OFF     | Build C++ examples under `examples/cpp`              |
-| `SIMDRNG_BUILD_DOCS`     | OFF     | Generate Sphinx/Doxygen docs                         |
-| `SIMDRNG_MARCH_NATIVE`   | OFF     | Compile benchmarks with `-march=native`              |
-| `SIMDRNG_ENABLE_CODSPEED`| OFF     | Link codspeed-cpp into the bench harness             |
-| `SIMDRNG_USE_SANITIZERS` | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer          |
-
 `CMakePresets.json` ships ready-made profiles so you rarely need raw `-D` flags:
 `release`, `debug`, `ci`, `bench`, `codspeed`, `sanitizers`, `tsan`, `valgrind`,
-`static-analysis`, `coverage`. For example `cmake --preset sanitizers && cmake
---build --preset sanitizers && ctest --preset sanitizers`.
+`static-analysis`, `coverage`.
+
+CMake options:
+
+| Option                    | Default | Purpose                                              |
+|---------------------------|---------|------------------------------------------------------|
+| `SIMDRNG_WITH_XSIMD`      | ON      | Build the SIMD backends with xsimd (OFF = scalar-only header library) |
+| `SIMDRNG_BUILD_TESTS`     | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`) |
+| `SIMDRNG_BUILD_PYTHON`    | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`) |
+| `SIMDRNG_BUILD_EXAMPLES`  | OFF     | Build C++ examples under `examples/cpp`              |
+| `SIMDRNG_BUILD_DOCS`      | OFF     | Generate Sphinx/Doxygen docs                         |
+| `SIMDRNG_MARCH_NATIVE`    | OFF     | Compile benchmarks with `-march=native`              |
+| `SIMDRNG_ENABLE_CODSPEED` | OFF     | Link codspeed-cpp into the bench harness             |
+| `SIMDRNG_USE_SANITIZERS`  | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer          |
 
 With `SIMDRNG_WITH_XSIMD=OFF` the library is header-only and depends on nothing —
 only the scalar generators are built and `simdrng::Xoshiro` aliases the scalar
 implementation.
 
-Consuming from another CMake project — install and `find_package`:
+**Consume from another CMake project** — install and `find_package`:
 
 ```cmake
 find_package(simdrng CONFIG REQUIRED)
@@ -111,31 +176,7 @@ branch:
   the default `simdrng::Xoshiro` alias) require linking the compiled library and
   are not available from the single header alone.
 
-Ready-to-run [Compiler Explorer links](https://github.com/DiamonDinoia/simdrng/tree/godbolt-links)
-(the SIMD one uses Compiler Explorer's vendored xsimd library) are published to
-the `godbolt-links` branch.
-
-## Examples
-
-C++ — see [`examples/cpp/`](examples/cpp/):
-
-- [`basic_xoshiro.cpp`](examples/cpp/basic_xoshiro.cpp) — scalar usage
-- [`simd_bulk_fill.cpp`](examples/cpp/simd_bulk_fill.cpp) — SIMD hot loop
-- [`xoshiro_native.cpp`](examples/cpp/xoshiro_native.cpp) — `-march=native`
-- [`threaded_openmp.cpp`](examples/cpp/threaded_openmp.cpp) — per-thread streams
-- [`philox_counter_based.cpp`](examples/cpp/philox_counter_based.cpp) — Philox counter-based reproducibility
-
-Python — see [`examples/python/`](examples/python/):
-
-```python
-import simdrng
-import numpy as np
-
-rng = simdrng.XoshiroSIMD(seed=42)          # returns numpy.random.Generator
-samples = rng.random(10_000_000)            # GIL-released C++ bulk fill
-```
-
-## Python install
+### Python
 
 ```sh
 pip install .
@@ -151,6 +192,12 @@ branch; CodSpeed tracks regressions per-PR. See
 [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
 ![Throughput overview (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/overview.svg)
+
+## Documentation
+
+Full documentation — quick start, per-family guides, the auto-generated C++ and
+Python API reference, and the technical references — is hosted at
+**<https://simdrng.readthedocs.io/>**.
 
 ## Contributing
 
@@ -170,6 +217,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs   # skip the bulk-format 
   xoshiro256++ has period 2²⁵⁶−1; SplitMix64 is used to seed it. `uniform()`'s
   `(x >> 11) * 0x1.0p-53` follows the [equidistribution rationale](https://prng.di.unimi.it/#remarks)
   (*"all dyadic rationals of the form k·2⁻⁵³ will be equally likely"*).
+- J. K. Salmon et al., *Parallel Random Numbers: As Easy as 1, 2, 3* (Philox), SC '11.
+- D. J. Bernstein, *ChaCha, a variant of Salsa20* — <https://cr.yp.to/chacha.html>.
 - The reference `splitmix64.c` / `xoshiro256plusplus.c` used by the tests are
   the authors' own public-domain (CC0) code from <https://prng.di.unimi.it/>.
 

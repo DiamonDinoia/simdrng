@@ -29,6 +29,13 @@ source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
 master_doc = "index"
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# The Python API page (api_python) uses autodoc on the compiled `simdrng`
+# extension, which is only importable when the package is built (e.g. with
+# SIMDRNG_BUILD_PYTHON). The docs build installs only docs/requirements.txt, so
+# autodoc cannot import it there; suppress those import warnings so the C++ docs
+# still build clean under `-W`. When the module is present, autodoc renders it.
+suppress_warnings = ["autodoc"]
+
 # -- HTML output -------------------------------------------------------------
 html_theme = "sphinx_rtd_theme"
 html_static_path: list[str] = []

@@ -1,24 +1,83 @@
 simdrng
 =======
 
-``simdrng`` is a C++20 header-only library of scalar and SIMD-accelerated
-random number generators, with nanobind-powered Python bindings that drop
+``simdrng`` is a library of C++20 random number generators that run scalar
+**and** SIMD-accelerated, with nanobind-powered Python bindings that drop
 straight into ``numpy`` and ``scipy``.
 
-**Generator families**
+It pairs best-in-class scalar generators (xoshiro256++, Philox, the ChaCha
+cipher core) with hand-tuned SIMD backends and picks the right implementation
+**at runtime** via `xsimd <https://github.com/xtensor-stack/xsimd>`_ dispatch —
+so one binary uses AVX-512 on a server and NEON on an ARM laptop, with no
+recompilation.
 
-- Xoshiro256++ (scalar, SIMD dispatch, ``-march=native``)
-- SplitMix64
-- ChaCha (8 / 12 / 20 rounds) — scalar, SIMD dispatch, native
-- Philox (2x32, 4x32, 2x64, 4x64) — scalar, SIMD dispatch, native
+Project links
+-------------
+
+- Source: https://github.com/DiamonDinoia/simdrng
+- Benchmarks (CI-generated charts): https://github.com/DiamonDinoia/simdrng/tree/benchmark-results
+- Compiler Explorer snippets: https://github.com/DiamonDinoia/simdrng/tree/godbolt-links
+
+Core generator families
+------------------------
+
+- **Xoshiro256++** — all-purpose 64-bit generator (scalar, SIMD dispatch, ``-march=native``)
+- **SplitMix64** — seeding helper used to expand a 64-bit seed into engine state
+- **ChaCha 8 / 12 / 20** — counter-based cipher core (scalar, SIMD dispatch, native)
+- **Philox 2x32 / 4x32 / 2x64 / 4x64** — stateless counter-based, trivially parallel (scalar, SIMD dispatch, native)
+
+Quick start
+-----------
+
+.. note::
+
+   Ready-to-run `Compiler Explorer links
+   <https://github.com/DiamonDinoia/simdrng/tree/godbolt-links>`_ let you try
+   simdrng without cloning anything.
+
+.. code-block:: cpp
+
+   #include <simdrng/xoshiro.hpp>
+
+   simdrng::Xoshiro rng(42);          // seed
+   std::uint64_t x = rng();           // next 64-bit value
+   double u = rng.uniform();          // double in [0, 1)
+
+Every generator satisfies the standard ``UniformRandomBitGenerator``
+requirements, so it composes with ``std::uniform_int_distribution`` and friends;
+``uniform()`` is a faster path to a ``double`` in ``[0, 1)``.
+
+Parallel streams
+----------------
+
+Pass optional ``thread_id`` / ``cluster_id`` to carve out independent,
+non-overlapping streams per thread and per node (via xoshiro's ``jump()`` /
+``long_jump()``); Philox instead derives each work item's sub-stream from
+``(seed, counter)`` with no coordination. See the per-family **Guides** below.
+
+Next reads
+----------
+
+- New here? Start with :doc:`install`, then the :doc:`examples`.
+- Choosing a generator? See the per-family **Guides**.
+- Reproducibility, periods and the ``uniform()`` rationale: :doc:`references`.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guide
+   :caption: Getting Started
 
    install
    examples
    benchmarks
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guides
+
+   guides/xoshiro
+   guides/chacha
+   guides/philox
+   guides/splitmix
 
 .. toctree::
    :maxdepth: 2

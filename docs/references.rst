@@ -43,6 +43,36 @@ Generator properties
      - Counter-based; stateless and trivially parallel — distinct counters give
        independent streams with no coordination.
 
+Scrambling and equidistribution
+--------------------------------
+
+xoshiro256++ is a **scrambled-linear** generator: a fast linear engine over
+GF(2) (the ``xoshiro`` state transition) supplies excellent
+equidistribution and a known period, while a non-linear *scrambler* applied to
+the output hides the linear artifacts that batteries like BigCrush detect. The
+``++`` scrambler — ``rotl(s0 + s3, 23) + s0`` — is a sum-and-rotate that, per
+Blackman & Vigna, makes the output pass the full test suites while keeping the
+per-call cost to a couple of instructions. The underlying linear engine is
+**equidistributed**, i.e. over a full period every output value appears the same
+number of times (minus the all-zero state), which is what gives the family its
+strong low-dimensional uniformity.
+
+Seeding
+-------
+
+Vigna recommends never seeding a scrambled-linear generator directly from a
+small integer, because a low-entropy state propagates slowly through the linear
+map. simdrng follows the recommendation from https://prng.di.unimi.it/ and
+expands every 64-bit seed through **SplitMix64** before filling engine state:
+
+   *"We suggest to use a SplitMix64 generator … to fill the state of our
+   generators starting from a 64-bit seed, as research has shown that
+   initialization must be performed with a generator radically different in
+   nature from the one initialized."*
+
+This is why ``0`` and ``1`` are perfectly good seeds in simdrng. The same
+SplitMix64 expansion derives the Philox key from its seed.
+
 Uniform doubles in ``[0, 1)``
 -----------------------------
 
