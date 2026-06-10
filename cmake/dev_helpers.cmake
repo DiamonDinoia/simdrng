@@ -187,7 +187,13 @@ option(
     OFF
 )
 if(SIMDRNG_ENABLE_COVERAGE)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:--coverage>)
+    # --coverage instruments line/branch counters. -fprofile-update=atomic makes
+    # those updates atomic so the multithreaded std::thread test can't race them
+    # into negative counts (geninfo rejects "Unexpected negative count").
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:--coverage>
+        $<$<COMPILE_LANGUAGE:CXX>:-fprofile-update=atomic>
+    )
     add_link_options(--coverage)
 
     find_program(LCOV_EXECUTABLE lcov)
