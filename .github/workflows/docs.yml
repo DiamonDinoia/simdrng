@@ -1,6 +1,14 @@
 name: Docs
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "include/**"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
+      - "examples/**"
   pull_request:
     branches: [main]
     paths:
