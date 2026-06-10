@@ -125,7 +125,9 @@ else ()
     message(FATAL_ERROR "Unsupported SIMDRNG_USE_SANITIZERS value '${SIMDRNG_USE_SANITIZERS}'. Use one of: OFF, ON, TSAN.")
 endif ()
 if (_simdrng_san_flags)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:${_simdrng_san_flags}>)
+    # Applied to all languages (the flags are valid for both the C and C++
+    # compilers); mirrors the global coverage instrumentation below.
+    add_compile_options(${_simdrng_san_flags})
     add_link_options(${_simdrng_san_flags})
 endif ()
 
