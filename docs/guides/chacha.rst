@@ -52,12 +52,18 @@ The scalar ``ChaCha<R>`` is constructed from an explicit key, counter and nonce
 (``ChaCha<20> rng(key, counter, nonce)``); the SIMD/native types add a
 seed-based constructor that derives the key for you.
 
-Rounds, periods and reproducibility
------------------------------------
+Periods and streams
+-------------------
 
 ``R`` is always rounded up to an even number (odd and even rounds are issued in
 pairs). Within a fixed ``(key, nonce)`` the 64-bit block counter gives a period
 of 2\ :sup:`64` blocks. Re-running with the same ``(seed/key, counter, nonce)``
 reproduces the stream exactly, and bumping the counter or nonce yields
-independent streams. ChaCha20 is cross-checked against `Monocypher
-<https://monocypher.org/>`_ in the test suite; see :doc:`/references`.
+independent streams. See :ref:`gen-properties` for the full period table.
+
+References
+----------
+
+ChaCha is D. J. Bernstein's *ChaCha, a variant of Salsa20*
+(https://cr.yp.to/chacha.html); the ChaCha20 output is cross-checked against
+`Monocypher <https://monocypher.org/>`_ in the test suite. See :doc:`/references`.

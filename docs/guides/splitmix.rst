@@ -34,5 +34,18 @@ than to produce bulk output.
    std::uint64_t b = sm();            // another, independent of a
 
 Each call advances the state and returns the next mixed value, so successive
-calls yield independent 64-bit seeds. See :doc:`/references` for Vigna's seeding
-recommendation.
+calls yield independent 64-bit seeds.
+
+Periods and streams
+-------------------
+
+SplitMix64 has a period of 2\ :sup:`64`. simdrng uses it only to expand a 64-bit
+seed into the larger state of the other engines. See :ref:`gen-properties` for
+the full period table.
+
+References
+----------
+
+Using SplitMix64 to seed the other generators follows S. Vigna's explicit
+recommendation (https://prng.di.unimi.it/), quoted under :ref:`seeding`. See
+:doc:`/references`.

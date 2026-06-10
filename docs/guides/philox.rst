@@ -52,8 +52,8 @@ Scalar, SIMD dispatch, and native
 The 64-bit seed is expanded into the Philox key via SplitMix64 (see
 :doc:`splitmix`); the counter selects the starting stream position.
 
-Periods and parallel streams
-----------------------------
+Periods and streams
+-------------------
 
 A ``Philox<N,W>`` block spans a counter space of 2\ :sup:`W·N`, so distinct
 counters give independent, non-overlapping streams with no setup. The common
@@ -63,5 +63,11 @@ pattern is to fix the seed and assign each work item a disjoint counter range:
 
    simdrng::Philox4x64SIMD rng(seed, /*counter=*/ work_item_id);
 
-See :doc:`/references` for the full period table and the counter-based design
-reference.
+See :ref:`gen-properties` for the full period table.
+
+References
+----------
+
+Philox is the counter-based design of J. K. Salmon, M. A. Moraes, R. O. Dror and
+D. E. Shaw, *Parallel Random Numbers: As Easy as 1, 2, 3* (SC '11). See
+:doc:`/references`.

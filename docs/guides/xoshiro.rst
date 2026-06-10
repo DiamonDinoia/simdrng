@@ -55,18 +55,25 @@ when built with xsimd, and ``XoshiroScalar`` otherwise.
 The SIMD types refill an internal cache with wide batches, so an ordinary
 generate loop runs vectorised — there is no separate bulk-fill API.
 
-Periods and parallel streams
-----------------------------
+Periods and streams
+-------------------
 
-The seed is expanded through SplitMix64 (see :doc:`splitmix`) so even low-entropy
-seeds give sound state. For independent parallel streams, pass ``thread_id`` and
-``cluster_id``:
+xoshiro256++ has a period of 2\ :sup:`256` − 1. The seed is expanded through
+SplitMix64 (see :doc:`splitmix`) so even low-entropy seeds give sound state. For
+independent parallel streams, pass ``thread_id`` and ``cluster_id``:
 
 .. code-block:: cpp
 
    simdrng::Xoshiro rng(seed, thread_id, cluster_id);
 
-Internally ``jump()`` advances the state by 2\ :sup:`128` calls (carving out up
-to 2\ :sup:`128` non-overlapping per-thread subsequences) and ``long_jump()`` by
-2\ :sup:`192` (2\ :sup:`64` per-cluster starting points). See
-:doc:`/references` for the period table.
+Internally ``jump()`` carves out non-overlapping per-thread subsequences and
+``long_jump()`` per-cluster starting points. See :ref:`gen-properties` for the
+exact jump spacing and the full period table.
+
+References
+----------
+
+xoshiro256++ and its SplitMix64 seeding follow D. Blackman and S. Vigna,
+*Scrambled Linear Pseudorandom Number Generators* (the design and the ``++``
+scrambler) and S. Vigna's https://prng.di.unimi.it/ (seeding and the shootout).
+See :doc:`/references`.

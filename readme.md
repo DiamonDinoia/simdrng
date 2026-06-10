@@ -211,18 +211,23 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs   # skip the bulk-format 
 
 ## References
 
-- D. Blackman and S. Vigna, *Scrambled Linear Pseudorandom Number Generators*,
-  ACM TOMS (2021) — <https://vigna.di.unimi.it/papers.php#BlVSLPNG>.
-- S. Vigna, the xoshiro/xoroshiro family and PRNG shootout — <https://prng.di.unimi.it/>.
-  xoshiro256++ has period 2²⁵⁶−1; SplitMix64 is used to seed it. `uniform()`'s
-  `(x >> 11) * 0x1.0p-53` follows the [equidistribution rationale](https://prng.di.unimi.it/#remarks)
-  (*"all dyadic rationals of the form k·2⁻⁵³ will be equally likely"*).
-- J. K. Salmon et al., *Parallel Random Numbers: As Easy as 1, 2, 3* (Philox), SC '11.
-- D. J. Bernstein, *ChaCha, a variant of Salsa20* — <https://cr.yp.to/chacha.html>.
-- The reference `splitmix64.c` / `xoshiro256plusplus.c` used by the tests are
-  the authors' own public-domain (CC0) code from <https://prng.di.unimi.it/>.
+Grouped by the family each source backs — full annotations (periods, scrambling,
+seeding, the `uniform()` rationale) live in
+[docs → references](https://simdrng.readthedocs.io/en/latest/references.html):
 
-More detail in [docs → references](https://simdrng.readthedocs.io/en/latest/references.html).
+- **Xoshiro256++ & SplitMix64** — D. Blackman and S. Vigna, *Scrambled Linear
+  Pseudorandom Number Generators*, ACM TOMS (2021),
+  <https://vigna.di.unimi.it/papers.php#BlVSLPNG>; and S. Vigna's
+  xoshiro/xoroshiro shootout, SplitMix64 seeding, and `uniform()` rationale,
+  <https://prng.di.unimi.it/>.
+- **ChaCha 8/12/20** — D. J. Bernstein, *ChaCha, a variant of Salsa20*,
+  <https://cr.yp.to/chacha.html>; cross-checked against
+  [Monocypher](https://monocypher.org/) in the tests.
+- **Philox** — J. K. Salmon et al., *Parallel Random Numbers: As Easy as
+  1, 2, 3* (Philox), SC '11.
+
+The reference `splitmix64.c` / `xoshiro256plusplus.c` used by the tests are the
+authors' own public-domain (CC0) code from <https://prng.di.unimi.it/>.
 
 ## License
 

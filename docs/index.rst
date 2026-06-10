@@ -26,6 +26,25 @@ Core generator families
 - **ChaCha 8 / 12 / 20** — counter-based cipher core (scalar, SIMD dispatch, native)
 - **Philox 2x32 / 4x32 / 2x64 / 4x64** — stateless counter-based, trivially parallel (scalar, SIMD dispatch, native)
 
+Choosing a generator
+--------------------
+
+Following Vigna's all-purpose-versus-special-purpose framing (extended to the
+counter-based families):
+
+- **Default to xoshiro256++** — the all-purpose 64-bit generator: large state,
+  passes all known tests, very fast, not cryptographically secure. See
+  :doc:`guides/xoshiro`.
+- **Need stateless, seekable, trivially-parallel streams?** Use **Philox** —
+  each work item derives its own sub-stream from ``(seed, counter)`` with no
+  coordination. See :doc:`guides/philox`.
+- **Need cryptographic-grade quality / a CSPRNG?** Use **ChaCha** (8 / 12 / 20).
+  See :doc:`guides/chacha`.
+- **Seeding** is always done with **SplitMix64** (Vigna's recommendation); it is
+  a seeding helper, not a stream generator. See :doc:`guides/splitmix`.
+
+The rationale behind this guidance is in :ref:`choosing-a-generator`.
+
 Quick start
 -----------
 
