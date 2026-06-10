@@ -1,5 +1,7 @@
-if (NOT SKBUILD)
-    message(WARNING "\
+if(NOT SKBUILD)
+    message(
+        WARNING
+        "\
   This CMake file is meant to be executed using 'scikit-build'. Running
   it directly will almost certainly not produce the desired result. If
   you are a user trying to install this package, please use the command
@@ -18,16 +20,20 @@ if (NOT SKBUILD)
   =====================================================================
   You may optionally add -Ceditable.rebuild=true to auto-rebuild when
   the package is imported. Otherwise, you need to re-run the above
-  after editing C++ files.")
+  after editing C++ files."
+    )
 endif()
 
-find_package(Python
-        REQUIRED COMPONENTS Interpreter Development.Module NumPy
-        OPTIONAL_COMPONENTS Development.SABIModule)
+find_package(
+    Python
+    REQUIRED
+    COMPONENTS Interpreter Development.Module NumPy
+    OPTIONAL_COMPONENTS Development.SABIModule
+)
 
 set(NANOBIND_VERSION 2.10.2)
 
-CPMAddPackage(
+cpmaddpackage(
     NAME nanobind
     GITHUB_REPOSITORY wjakob/nanobind
     VERSION ${NANOBIND_VERSION}

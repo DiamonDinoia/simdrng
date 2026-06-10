@@ -1,8 +1,8 @@
 #include <random>
 #include <vector>
 
-#include <simdrng/xoshiro_simd.hpp>
 #include <catch2/catch_all.hpp>
+#include <simdrng/xoshiro_simd.hpp>
 
 static constexpr auto tests = 1 << 12; // 4096
 

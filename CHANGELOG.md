@@ -14,6 +14,7 @@ First tagged release. The project was renamed from `VectorXoshiro`/`prng` to
 `simdrng` and hardened for distribution.
 
 ### Added
+
 - Optional xsimd backend via `-DSIMDRNG_WITH_XSIMD` (default ON). With it `OFF`,
   the library is dependency-free and header-only, exposing only the scalar
   generators; `simdrng::Xoshiro` then aliases the scalar implementation.
@@ -35,6 +36,7 @@ First tagged release. The project was renamed from `VectorXoshiro`/`prng` to
   scalar-only matrices) and builds a downstream `find_package` consumer against it.
 
 ### Changed
+
 - **Renamed** the public surface: include directory `random/` → `simdrng/`,
   namespace `prng::` → `simdrng::`, and macros `PRNG_*` → `SIMDRNG_*`. Downstream
   code now uses `#include <simdrng/...>` and `simdrng::`.

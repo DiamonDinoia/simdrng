@@ -22,32 +22,27 @@ namespace internal {
 //          round a bijection; it is the only part that differs between 2x and 4x.
 // Adding support for another N is purely adding a specialization here; the round
 // code is already generic over N/2.
-template <std::uint8_t N, std::uint8_t W>
-struct PhiloxConstants;
+template <std::uint8_t N, std::uint8_t W> struct PhiloxConstants;
 
-template <>
-struct PhiloxConstants<4, 32> {
+template <> struct PhiloxConstants<4, 32> {
   static constexpr std::array<std::uint32_t, 2> MUL = {0xD2511F53, 0xCD9E8D57};
   static constexpr std::array<std::uint32_t, 2> BUMP = {0x9E3779B9, 0xBB67AE85};
   static constexpr std::array<std::uint8_t, 2> PERM = {1, 0};
 };
 
-template <>
-struct PhiloxConstants<2, 32> {
+template <> struct PhiloxConstants<2, 32> {
   static constexpr std::array<std::uint32_t, 1> MUL = {0xD256D193};
   static constexpr std::array<std::uint32_t, 1> BUMP = {0x9E3779B9};
   static constexpr std::array<std::uint8_t, 1> PERM = {0};
 };
 
-template <>
-struct PhiloxConstants<4, 64> {
+template <> struct PhiloxConstants<4, 64> {
   static constexpr std::array<std::uint64_t, 2> MUL = {0xD2E7470EE14C6C93ULL, 0xCA5A826395121157ULL};
   static constexpr std::array<std::uint64_t, 2> BUMP = {0x9E3779B97F4A7C15ULL, 0xBB67AE8584CAA73BULL};
   static constexpr std::array<std::uint8_t, 2> PERM = {1, 0};
 };
 
-template <>
-struct PhiloxConstants<2, 64> {
+template <> struct PhiloxConstants<2, 64> {
   static constexpr std::array<std::uint64_t, 1> MUL = {0xD2B74407B1CE6E93ULL};
   static constexpr std::array<std::uint64_t, 1> BUMP = {0x9E3779B97F4A7C15ULL};
   static constexpr std::array<std::uint8_t, 1> PERM = {0};
@@ -55,8 +50,7 @@ struct PhiloxConstants<2, 64> {
 
 } // namespace internal
 
-template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10>
-class Philox {
+template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10> class Philox {
   static_assert(N == 2 || N == 4, "Philox N must be 2 or 4");
   static_assert(W == 32 || W == 64, "Philox W must be 32 or 64");
   static_assert(R > 0, "Philox rounds must be > 0");
@@ -70,13 +64,9 @@ public:
   static constexpr auto RESULTS_PER_BLOCK = std::uint8_t{N * W / 64};
   using result_block_type = std::array<result_type, RESULTS_PER_BLOCK>;
 
-  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept {
-    return (std::numeric_limits<result_type>::min)();
-  }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
 
-  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept {
-    return (std::numeric_limits<result_type>::max)();
-  }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
   explicit SIMDRNG_ALWAYS_INLINE Philox(result_type seed, result_type counter = 0) noexcept
       : m_counter(counter_from_uint64(counter)), m_key(seed_to_key(seed)) {}
@@ -105,7 +95,7 @@ public:
     return m_counter;
   }
 
-  const key_type& getKey() const noexcept { return m_key; }
+  const key_type &getKey() const noexcept { return m_key; }
 
   void setCounter(const counter_type &ctr) noexcept {
     m_counter = ctr;
@@ -117,9 +107,7 @@ public:
     m_result_index = RESULTS_PER_BLOCK;
   }
 
-  const counter_type& getCounterForSerde() const noexcept {
-    return m_counter;
-  }
+  const counter_type &getCounterForSerde() const noexcept { return m_counter; }
 
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_counter = ctr;
@@ -178,8 +166,7 @@ private:
   result_block_type m_result_cache{};
   std::uint8_t m_result_index = RESULTS_PER_BLOCK;
 
-  static constexpr SIMDRNG_ALWAYS_INLINE void mulhilo(word_type a, word_type b,
-                                                     word_type &hi, word_type &lo) noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE void mulhilo(word_type a, word_type b, word_type &hi, word_type &lo) noexcept {
     if constexpr (W == 32) {
       auto product = static_cast<std::uint64_t>(a) * static_cast<std::uint64_t>(b);
       lo = static_cast<word_type>(product);
@@ -234,13 +221,15 @@ private:
 
   constexpr SIMDRNG_ALWAYS_INLINE void inc_counter() noexcept {
     for (std::uint8_t i = 0; i < N; ++i) {
-      if (++m_counter[i] != 0) break;
+      if (++m_counter[i] != 0)
+        break;
     }
   }
 
   static constexpr SIMDRNG_ALWAYS_INLINE void dec_counter(counter_type &ctr) noexcept {
     for (std::uint8_t i = 0; i < N; ++i) {
-      if (ctr[i]-- != 0) break;
+      if (ctr[i]-- != 0)
+        break;
     }
   }
 

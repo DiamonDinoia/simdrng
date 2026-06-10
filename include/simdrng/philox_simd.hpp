@@ -19,8 +19,7 @@ namespace simdrng {
 
 namespace internal {
 
-template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R>
-struct PhiloxState {
+template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct PhiloxState {
   static_assert(N == 2 || N == 4, "Philox N must be 2 or 4");
   static_assert(W == 32 || W == 64, "Philox W must be 32 or 64");
 
@@ -37,10 +36,8 @@ struct PhiloxState {
 
   static constexpr std::uint16_t CACHE_SIZE = 256;
   static constexpr std::uint16_t BLOCKS_PER_CACHE = CACHE_SIZE / RESULTS_PER_BLOCK;
-  static_assert(CACHE_SIZE % RESULTS_PER_BLOCK == 0,
-                "CACHE_SIZE must be a multiple of RESULTS_PER_BLOCK");
-  static constexpr std::uint16_t BATCHES_PER_CACHE =
-      SIMD_WIDTH == 0 ? 1 : BLOCKS_PER_CACHE / SIMD_WIDTH;
+  static_assert(CACHE_SIZE % RESULTS_PER_BLOCK == 0, "CACHE_SIZE must be a multiple of RESULTS_PER_BLOCK");
+  static constexpr std::uint16_t BATCHES_PER_CACHE = SIMD_WIDTH == 0 ? 1 : BLOCKS_PER_CACHE / SIMD_WIDTH;
   static_assert(SIMD_WIDTH == 0 || BLOCKS_PER_CACHE % SIMD_WIDTH == 0,
                 "BLOCKS_PER_CACHE must be a multiple of SIMD_WIDTH");
 
@@ -53,8 +50,7 @@ struct PhiloxState {
   SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
     auto counter = m_counter;
     poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) {
-      gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK,
-                      counter, m_key);
+      gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK, counter, m_key);
       advance_counter(counter, static_cast<word_type>(SIMD_WIDTH));
     });
     m_counter = counter;
@@ -64,15 +60,16 @@ struct PhiloxState {
     counter_type ctr = m_counter;
     auto consumed = static_cast<word_type>(cache_index / RESULTS_PER_BLOCK);
     auto back_off = static_cast<word_type>(BLOCKS_PER_CACHE) - consumed;
-    if (prev) ++back_off;
+    if (prev)
+      ++back_off;
     // Two's-complement: subtract back_off via advance_counter(-back_off).
     advance_counter(ctr, static_cast<word_type>(0) - back_off);
     return ctr;
   }
 
-  const counter_type& getRawCounter() const noexcept { return m_counter; }
+  const counter_type &getRawCounter() const noexcept { return m_counter; }
 
-  const key_type& getKey() const noexcept { return m_key; }
+  const key_type &getKey() const noexcept { return m_key; }
 
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_counter = ctr;
@@ -88,14 +85,14 @@ private:
     if constexpr (N >= 2) {
       if (ctr[0] < old) { // carry
         for (std::uint8_t i = 1; i < N; ++i) {
-          if (++ctr[i] != 0) break;
+          if (++ctr[i] != 0)
+            break;
         }
       }
     }
   }
 
-  static SIMDRNG_ALWAYS_INLINE void simd_single_round(std::array<simd_type, N> &ctr,
-                                                     key_type &key) noexcept {
+  static SIMDRNG_ALWAYS_INLINE void simd_single_round(std::array<simd_type, N> &ctr, key_type &key) noexcept {
     // Data-driven round, generic over N/2 counter pairs (see PhiloxConstants).
     // poet::static_for unrolls at compile time so the PERM lookups and lane
     // indices fold away.
@@ -117,13 +114,10 @@ private:
     poet::static_for<0, PAIRS>([&](auto J) { key[J] += C::BUMP[J]; });
   }
 
-  static SIMDRNG_ALWAYS_INLINE void init_counter_batch(
-      std::array<simd_type, N> &ctr_simd,
-      const counter_type &counter) noexcept {
+  static SIMDRNG_ALWAYS_INLINE void init_counter_batch(std::array<simd_type, N> &ctr_simd,
+                                                       const counter_type &counter) noexcept {
     alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> offsets{};
-    poet::static_for<0, SIMD_WIDTH>([&](auto I) {
-      offsets[I] = static_cast<word_type>(I.value);
-    });
+    poet::static_for<0, SIMD_WIDTH>([&](auto I) { offsets[I] = static_cast<word_type>(I.value); });
 
     auto carry = simd_type::load_aligned(offsets.data());
     poet::static_for<0, N>([&](auto I) {
@@ -131,27 +125,21 @@ private:
       auto val = base + carry;
       ctr_simd[I] = val;
       if constexpr (I + 1 < N) {
-        carry = xsimd::select(val < base,
-                              simd_type::broadcast(word_type{1}),
-                              simd_type::broadcast(word_type{0}));
+        carry = xsimd::select(val < base, simd_type::broadcast(word_type{1}), simd_type::broadcast(word_type{0}));
       }
     });
   }
 
   static SIMDRNG_ALWAYS_INLINE void store_blocks_to_cache(result_type *cache,
-                                     const std::array<simd_type, N> &ctr_simd) noexcept {
+                                                          const std::array<simd_type, N> &ctr_simd) noexcept {
     if constexpr (W == 64 && N == SIMD_WIDTH) {
       std::array<simd_type, SIMD_WIDTH> regs;
       poet::static_for<0, N>([&](auto I) { regs[I] = ctr_simd[I]; });
       xsimd::transpose(regs.data(), regs.data() + SIMD_WIDTH);
-      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) {
-        regs[Lane].store_aligned(cache + Lane * RESULTS_PER_BLOCK);
-      });
+      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) { regs[Lane].store_aligned(cache + Lane * RESULTS_PER_BLOCK); });
     } else {
       alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> regs[N];
-      poet::static_for<0, N>([&](auto I) {
-        ctr_simd[I].store_aligned(regs[I].data());
-      });
+      poet::static_for<0, N>([&](auto I) { ctr_simd[I].store_aligned(regs[I].data()); });
 
       for (std::uint8_t lane = 0; lane < SIMD_WIDTH; ++lane) {
         if constexpr (W == 32) {
@@ -169,24 +157,20 @@ private:
     }
   }
 
-  static SIMDRNG_ALWAYS_INLINE void gen_block_batch(result_type *cache,
-                                                  const counter_type &counter,
-                                                  const key_type &key) noexcept {
+  static SIMDRNG_ALWAYS_INLINE void gen_block_batch(result_type *cache, const counter_type &counter,
+                                                    const key_type &key) noexcept {
     std::array<simd_type, N> ctr_simd;
     init_counter_batch(ctr_simd, counter);
 
     key_type round_key = key;
-    poet::static_for<0, R>([&](auto) {
-      simd_single_round(ctr_simd, round_key);
-    });
+    poet::static_for<0, R>([&](auto) { simd_single_round(ctr_simd, round_key); });
 
     store_blocks_to_cache(cache, ctr_simd);
   }
 };
 
 // Dispatch result: function pointers for the type-erased PhiloxSIMD wrapper.
-template <std::uint8_t N, std::uint8_t W>
-struct PhiloxSIMDInitResult {
+template <std::uint8_t N, std::uint8_t W> struct PhiloxSIMDInitResult {
   using word_type = std::conditional_t<W == 32, std::uint32_t, std::uint64_t>;
   using counter_type = std::array<word_type, N>;
   using key_type = std::array<word_type, N / 2>;
@@ -207,8 +191,7 @@ struct PhiloxSIMDInitResult {
   std::size_t simd_size;
 };
 
-template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
-struct PhiloxSIMDInitFunctor {
+template <std::uint8_t N, std::uint8_t W, std::uint8_t R> struct PhiloxSIMDInitFunctor {
   void *state_storage;
   using word_type = std::conditional_t<W == 32, std::uint32_t, std::uint64_t>;
   using counter_type = std::array<word_type, N>;
@@ -216,8 +199,7 @@ struct PhiloxSIMDInitFunctor {
   const key_type key;
   const counter_type counter;
 
-  template <class Arch>
-  PhiloxSIMDInitResult<N, W> operator()(Arch /*arch*/) const noexcept;
+  template <class Arch> PhiloxSIMDInitResult<N, W> operator()(Arch /*arch*/) const noexcept;
 };
 
 template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
@@ -232,17 +214,12 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arc
       +[](void *s, std::array<typename InitResult::result_type, InitResult::CACHE_SIZE> &cache) noexcept {
         static_cast<State *>(s)->populate_cache(cache);
       },
-      +[](const void *s, bool prev, std::uint16_t idx) noexcept -> typename InitResult::counter_type {
-        return static_cast<const State *>(s)->getCounter(prev, idx);
-      },
-      +[](const void *s) noexcept -> typename InitResult::counter_type {
-        return static_cast<const State *>(s)->getRawCounter();
-      },
-      +[](const void *s) noexcept -> typename InitResult::key_type {
-        return static_cast<const State *>(s)->getKey();
-      },
-      +[](void *s, const typename InitResult::counter_type &ctr,
-          const typename InitResult::key_type &key) noexcept {
+      +[](const void *s, bool prev, std::uint16_t idx) noexcept ->
+      typename InitResult::counter_type { return static_cast<const State *>(s)->getCounter(prev, idx); },
+      +[](const void *s) noexcept ->
+      typename InitResult::counter_type { return static_cast<const State *>(s)->getRawCounter(); },
+      +[](const void *s) noexcept -> typename InitResult::key_type { return static_cast<const State *>(s)->getKey(); },
+      +[](void *s, const typename InitResult::counter_type &ctr, const typename InitResult::key_type &key) noexcept {
         static_cast<State *>(s)->setState(ctr, key);
       },
       std::size_t{State::SIMD_WIDTH},
@@ -250,14 +227,14 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arc
 }
 
 // Extern template declarations for all NxW combos and architectures
-#define SIMDRNG_PHILOX_EXTERN_TEMPLATE(N, W, R, Arch)                                                  \
-  extern template SIMDRNG_EXPORT PhiloxSIMDInitResult<N, W>                                            \
-  PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch) const noexcept
+#define SIMDRNG_PHILOX_EXTERN_TEMPLATE(N, W, R, Arch)                                                                  \
+  extern template SIMDRNG_EXPORT PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch)     \
+      const noexcept
 
-#define SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(Arch)                                                 \
-  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 32, 10, Arch);                                                    \
-  SIMDRNG_PHILOX_EXTERN_TEMPLATE(2, 32, 10, Arch);                                                    \
-  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 64, 10, Arch);                                                    \
+#define SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(Arch)                                                                 \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 32, 10, Arch);                                                                     \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(2, 32, 10, Arch);                                                                     \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 64, 10, Arch);                                                                     \
   SIMDRNG_PHILOX_EXTERN_TEMPLATE(2, 64, 10, Arch)
 
 #if SIMDRNG_ARCH_X86_64
@@ -266,9 +243,9 @@ SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx2);
 SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx512bw);
 #elif SIMDRNG_ARCH_AARCH64
 SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::neon64);
-#  if XSIMD_WITH_SVE
+#if XSIMD_WITH_SVE
 SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::sve);
-#  endif
+#endif
 #elif SIMDRNG_ARCH_RISCV64
 SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::detail::rvv<128>);
 #endif
@@ -279,8 +256,7 @@ SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::detail::rvv<128>);
 } // namespace internal
 
 // PhiloxSIMD: runtime SIMD dispatch via inline storage + function pointers.
-template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10>
-class PhiloxSIMD {
+template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10> class PhiloxSIMD {
 public:
   using result_type = std::uint64_t;
   using word_type = std::conditional_t<W == 32, std::uint32_t, std::uint64_t>;
@@ -291,9 +267,7 @@ public:
   static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
   static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
-  static constexpr key_type seed_to_key(result_type seed) noexcept {
-    return Philox<N, W, R>::seed_to_key(seed);
-  }
+  static constexpr key_type seed_to_key(result_type seed) noexcept { return Philox<N, W, R>::seed_to_key(seed); }
 
   static constexpr counter_type counter_from_uint64(result_type counter) noexcept {
     return Philox<N, W, R>::counter_from_uint64(counter);
@@ -303,8 +277,8 @@ public:
       : PhiloxSIMD(seed_to_key(seed), counter_from_uint64(counter)) {}
 
   explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(const key_type &key, const counter_type &counter) noexcept {
-    auto result = xsimd::dispatch<dispatch_arch_list>(
-        internal::PhiloxSIMDInitFunctor<N, W, R>{m_state.data, key, counter})();
+    auto result =
+        xsimd::dispatch<dispatch_arch_list>(internal::PhiloxSIMDInitFunctor<N, W, R>{m_state.data, key, counter})();
     m_populate_cache = result.populate_cache;
     m_get_counter = result.get_counter;
     m_get_raw_counter = result.get_raw_counter;
@@ -320,19 +294,13 @@ public:
     return m_cache[m_index++];
   }
 
-  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
-    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
-  }
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
 
-  counter_type getCounter() const noexcept {
-    return m_get_counter(m_state.data, m_index != 0, m_index);
-  }
+  counter_type getCounter() const noexcept { return m_get_counter(m_state.data, m_index != 0, m_index); }
 
   key_type getKey() const noexcept { return m_get_key(m_state.data); }
 
-  counter_type getCounterForSerde() const noexcept {
-    return m_get_raw_counter(m_state.data);
-  }
+  counter_type getCounterForSerde() const noexcept { return m_get_raw_counter(m_state.data); }
 
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_set_state(m_state.data, ctr, key);
@@ -375,8 +343,7 @@ private:
 };
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10>
-class PhiloxNative {
+template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10> class PhiloxNative {
 public:
   using result_type = std::uint64_t;
   using word_type = std::conditional_t<W == 32, std::uint32_t, std::uint64_t>;
@@ -390,8 +357,7 @@ public:
   explicit PhiloxNative(result_type seed, result_type counter = 0) noexcept
       : PhiloxNative(Philox<N, W, R>::seed_to_key(seed), Philox<N, W, R>::counter_from_uint64(counter)) {}
 
-  PhiloxNative(const key_type &key, const counter_type &counter) noexcept
-      : m_state(key, counter) {}
+  PhiloxNative(const key_type &key, const counter_type &counter) noexcept : m_state(key, counter) {}
 
   SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
@@ -400,19 +366,13 @@ public:
     return m_cache[m_index++];
   }
 
-  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
-    return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
-  }
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
 
-  counter_type getCounter() const noexcept {
-    return m_state.getCounter(m_index != 0, m_index);
-  }
+  counter_type getCounter() const noexcept { return m_state.getCounter(m_index != 0, m_index); }
 
   key_type getKey() const noexcept { return m_state.getKey(); }
 
-  counter_type getCounterForSerde() const noexcept {
-    return m_state.getRawCounter();
-  }
+  counter_type getCounterForSerde() const noexcept { return m_state.getRawCounter(); }
 
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_state.setState(ctr, key);

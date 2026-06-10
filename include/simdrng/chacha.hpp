@@ -9,8 +9,7 @@
 
 namespace simdrng {
 
-template<std::uint8_t R = 20>
-class ChaCha {
+template <std::uint8_t R = 20> class ChaCha {
 
 protected:
   static constexpr auto MATRIX_WORDCOUNT = std::uint8_t{16};
@@ -23,13 +22,9 @@ public:
   using matrix_type = std::array<matrix_word, MATRIX_WORDCOUNT>;
   using result_cache_type = std::array<result_type, MATRIX_WORDCOUNT / 2>;
 
-  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept {
-    return (std::numeric_limits<result_type>::min)();
-  }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
 
-  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept {
-    return (std::numeric_limits<result_type>::max)();
-  }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
   /**
    * @brief Construct a scalar ChaCha generator with given key, counter and nonce
@@ -37,11 +32,8 @@ public:
    * @param counter Initial value of the counter.
    * @param nonce Initial value of the nonce.
    */
-  SIMDRNG_ALWAYS_INLINE explicit ChaCha(
-    const std::array<matrix_word, KEY_WORDCOUNT>& key,
-    const input_word counter,
-    const input_word nonce
-  ) noexcept {
+  SIMDRNG_ALWAYS_INLINE explicit ChaCha(const std::array<matrix_word, KEY_WORDCOUNT> &key, const input_word counter,
+                                        const input_word nonce) noexcept {
     // First four words (i.e. top-row) are always the same constants
     // They spell out "expand 2-byte k" in ASCII (little-endian)
     m_state[0] = 0x61707865;
@@ -94,8 +86,7 @@ public:
   SIMDRNG_ALWAYS_INLINE constexpr matrix_type getState() const noexcept {
     matrix_type state = m_state;
     if (m_result_index < m_result_cache.size()) {
-      const input_word counter =
-        (static_cast<input_word>(state[13]) << 32) | static_cast<input_word>(state[12]);
+      const input_word counter = (static_cast<input_word>(state[13]) << 32) | static_cast<input_word>(state[12]);
       const input_word current_counter = counter - 1;
       state[12] = static_cast<matrix_word>(current_counter & 0xFFFFFFFF);
       state[13] = static_cast<matrix_word>(current_counter >> 32);
@@ -112,17 +103,20 @@ private:
     return std::rotl(x, k);
   }
 
-  static constexpr SIMDRNG_ALWAYS_INLINE void quarter_round(
-    matrix_type &m,
-    const unsigned int a,
-    const unsigned int b,
-    const unsigned int c,
-    const unsigned int d
-  ) noexcept {
-    m[a] += m[b]; m[d] ^= m[a]; m[d] = rotl(m[d], 16);
-    m[c] += m[d]; m[b] ^= m[c]; m[b] = rotl(m[b], 12);
-    m[a] += m[b]; m[d] ^= m[a]; m[d] = rotl(m[d],  8);
-    m[c] += m[d]; m[b] ^= m[c]; m[b] = rotl(m[b],  7);
+  static constexpr SIMDRNG_ALWAYS_INLINE void quarter_round(matrix_type &m, const unsigned int a, const unsigned int b,
+                                                            const unsigned int c, const unsigned int d) noexcept {
+    m[a] += m[b];
+    m[d] ^= m[a];
+    m[d] = rotl(m[d], 16);
+    m[c] += m[d];
+    m[b] ^= m[c];
+    m[b] = rotl(m[b], 12);
+    m[a] += m[b];
+    m[d] ^= m[a];
+    m[d] = rotl(m[d], 8);
+    m[c] += m[d];
+    m[b] ^= m[c];
+    m[b] = rotl(m[b], 7);
   }
 
   constexpr SIMDRNG_ALWAYS_INLINE void inc_counter() noexcept {
@@ -131,11 +125,11 @@ private:
     }
   }
 
-  static constexpr SIMDRNG_ALWAYS_INLINE result_cache_type block_to_results(const matrix_type& block) noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE result_cache_type block_to_results(const matrix_type &block) noexcept {
     return std::bit_cast<result_cache_type>(block);
   }
 
-  static constexpr SIMDRNG_ALWAYS_INLINE matrix_type results_to_block(const result_cache_type& results) noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE matrix_type results_to_block(const result_cache_type &results) noexcept {
     return std::bit_cast<matrix_type>(results);
   }
 
@@ -150,7 +144,7 @@ private:
   /**
    * @brief Returns the next output from the generator, then increases state's counter by 1.
    * @return The output for the current internal state.
-  */
+   */
   SIMDRNG_FLATTEN constexpr SIMDRNG_ALWAYS_INLINE matrix_type next_block() noexcept {
     matrix_type x = m_state;
 
@@ -158,16 +152,16 @@ private:
     // As a result the amount of rounds performed is always rounded up to an even number.
     for (auto i = 0; i < R; i += 2) {
       // Odd round
-      quarter_round(x, 0, 4, 8,12);
-      quarter_round(x, 1, 5, 9,13);
-      quarter_round(x, 2, 6,10,14);
-      quarter_round(x, 3, 7,11,15);
+      quarter_round(x, 0, 4, 8, 12);
+      quarter_round(x, 1, 5, 9, 13);
+      quarter_round(x, 2, 6, 10, 14);
+      quarter_round(x, 3, 7, 11, 15);
 
       // Even round
-      quarter_round(x, 0, 5,10,15);
-      quarter_round(x, 1, 6,11,12);
-      quarter_round(x, 2, 7, 8,13);
-      quarter_round(x, 3, 4, 9,14);
+      quarter_round(x, 0, 5, 10, 15);
+      quarter_round(x, 1, 6, 11, 12);
+      quarter_round(x, 2, 7, 8, 13);
+      quarter_round(x, 3, 4, 9, 14);
     }
 
     for (auto i = 0; i < MATRIX_WORDCOUNT; ++i) {
@@ -180,4 +174,4 @@ private:
   }
 };
 
-}
+} // namespace simdrng

@@ -4,7 +4,8 @@
 
 int main() {
   simdrng::XoshiroNative rng(42u);
-  for (int i = 0; i < 4; ++i) std::cout << rng() << '\n';
+  for (int i = 0; i < 4; ++i)
+    std::cout << rng() << '\n';
   std::cout << "uniform: " << rng.uniform() << '\n';
   return 0;
 }

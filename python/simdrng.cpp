@@ -1,25 +1,25 @@
+#include <cstring>
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/vector.h>
 #include <numpy/random/bitgen.h>
-#include <cstring>
 #include <type_traits>
 
 #include <poet/poet.hpp>
 
+#include "simdrng/chacha_simd.hpp"
 #include "simdrng/macros.hpp"
+#include "simdrng/philox_simd.hpp"
 #include "simdrng/splitmix.hpp"
 #include "simdrng/xoshiro_scalar.hpp"
 #include "simdrng/xoshiro_simd.hpp"
-#include "simdrng/chacha_simd.hpp"
-#include "simdrng/philox_simd.hpp"
 
 // The Python bindings expose the SIMD generators, so they require a build with
 // xsimd. The build system enforces this (SIMDRNG_BUILD_PYTHON ⇒ SIMDRNG_WITH_XSIMD);
 // this guard documents the contract at the source level.
 #if !SIMDRNG_WITH_XSIMD
-#  error "The simdrng Python bindings require SIMDRNG_WITH_XSIMD=1"
+#error "The simdrng Python bindings require SIMDRNG_WITH_XSIMD=1"
 #endif
 
 namespace nb = nanobind;
@@ -54,14 +54,11 @@ struct is_philox<simdrng::PhiloxNative<N, W, R>> : std::true_type {};
 // PyBitGenerator<Rng>: single template replacing DirectBitGen + per-gen wrappers.
 // Contains: Rng instance + bitgen_t (stable address, no heap indirection).
 // No dcache — generators use their own internal caches.
-template <typename Rng>
-struct PyBitGenerator {
+template <typename Rng> struct PyBitGenerator {
   Rng rng;
   bitgen_t bitgen;
 
-  template <typename... Args>
-  explicit PyBitGenerator(Args &&...args)
-      : rng(std::forward<Args>(args)...), bitgen{} {
+  template <typename... Args> explicit PyBitGenerator(Args &&...args) : rng(std::forward<Args>(args)...), bitgen{} {
     bitgen.state = this;
     bitgen.next_uint64 = &next_u64;
     bitgen.next_uint32 = &next_u32;
@@ -71,27 +68,21 @@ struct PyBitGenerator {
 
   // Static callbacks — called by NumPy's Generator per-sample.
   // No virtual dispatch, no lambda thunks.
-  static uint64_t next_u64(void *s) noexcept {
-    return static_cast<PyBitGenerator *>(s)->rng();
-  }
+  static uint64_t next_u64(void *s) noexcept { return static_cast<PyBitGenerator *>(s)->rng(); }
   static uint32_t next_u32(void *s) noexcept {
     return static_cast<uint32_t>(static_cast<PyBitGenerator *>(s)->rng() >> 32);
   }
   static double next_f64(void *s) noexcept {
-    return static_cast<double>(static_cast<PyBitGenerator *>(s)->rng() >> 11) *
-           kInvPow53;
+    return static_cast<double>(static_cast<PyBitGenerator *>(s)->rng() >> 11) * kInvPow53;
   }
 
   // Non-owning capsule — Python wrapper prevents GC via reference.
-  nb::object capsule() {
-    return nb::steal(PyCapsule_New(&bitgen, "BitGenerator", nullptr));
-  }
+  nb::object capsule() { return nb::steal(PyCapsule_New(&bitgen, "BitGenerator", nullptr)); }
 
   uint64_t random_raw() noexcept { return rng(); }
 
   // -- Bulk fill: float64 --------------------------------------------------
-  void fill_uniform(
-      nb::ndarray<nb::numpy, double, nb::ndim<1>, nb::c_contig> out) noexcept {
+  void fill_uniform(nb::ndarray<nb::numpy, double, nb::ndim<1>, nb::c_contig> out) noexcept {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
@@ -104,8 +95,7 @@ struct PyBitGenerator {
   }
 
   // -- Bulk fill: uint64 ---------------------------------------------------
-  void fill_uint64(
-      nb::ndarray<nb::numpy, uint64_t, nb::ndim<1>, nb::c_contig> out) noexcept {
+  void fill_uint64(nb::ndarray<nb::numpy, uint64_t, nb::ndim<1>, nb::c_contig> out) noexcept {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
@@ -118,8 +108,7 @@ struct PyBitGenerator {
   }
 
   // -- Bulk fill: float32 (2 samples per uint64) ---------------------------
-  void fill_float32(
-      nb::ndarray<nb::numpy, float, nb::ndim<1>, nb::c_contig> out) noexcept {
+  void fill_float32(nb::ndarray<nb::numpy, float, nb::ndim<1>, nb::c_contig> out) noexcept {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
@@ -131,21 +120,16 @@ struct PyBitGenerator {
       std::size_t i = 0;
       for (; i + 1 < n; i += 2) {
         uint64_t raw = rng();
-        data[i] = static_cast<float>(static_cast<uint32_t>(raw >> 32) >> 8) *
-                  kScale;
-        data[i + 1] =
-            static_cast<float>(static_cast<uint32_t>(raw) >> 8) * kScale;
+        data[i] = static_cast<float>(static_cast<uint32_t>(raw >> 32) >> 8) * kScale;
+        data[i + 1] = static_cast<float>(static_cast<uint32_t>(raw) >> 8) * kScale;
       }
       if (i < n)
-        data[i] =
-            static_cast<float>(static_cast<uint32_t>(rng() >> 32) >> 8) *
-            kScale;
+        data[i] = static_cast<float>(static_cast<uint32_t>(rng() >> 32) >> 8) * kScale;
     }
   }
 
   // -- Bulk fill: uint32 (2 samples per uint64) ----------------------------
-  void fill_uint32(
-      nb::ndarray<nb::numpy, uint32_t, nb::ndim<1>, nb::c_contig> out) noexcept {
+  void fill_uint32(nb::ndarray<nb::numpy, uint32_t, nb::ndim<1>, nb::c_contig> out) noexcept {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
@@ -158,7 +142,8 @@ struct PyBitGenerator {
         data[i] = static_cast<uint32_t>(raw >> 32);
         data[i + 1] = static_cast<uint32_t>(raw);
       }
-      if (i < n) data[i] = static_cast<uint32_t>(rng() >> 32);
+      if (i < n)
+        data[i] = static_cast<uint32_t>(rng() >> 32);
     }
   }
 
@@ -176,15 +161,14 @@ private:
       if (idx == 0) {
         out[produced++] = static_cast<double>(rng() >> 11) * kInvPow53;
         idx = rng.cache_index();
-        if (produced >= n) return;
+        if (produced >= n)
+          return;
       }
       const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t to_copy =
-          (n - produced < available) ? (n - produced) : available;
+      const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
       const auto &cache = rng.cache();
       poet::dynamic_for<4>(std::size_t{0}, to_copy, [&](std::size_t i) {
-        out[produced + i] =
-            static_cast<double>(cache[idx + i] >> 11) * kInvPow53;
+        out[produced + i] = static_cast<double>(cache[idx + i] >> 11) * kInvPow53;
       });
       rng.set_cache_index(static_cast<std::uint8_t>(idx + to_copy));
       produced += to_copy;
@@ -201,12 +185,12 @@ private:
         uint64_t raw = rng();
         idx = rng.cache_index();
         data_from_u64_f32(out, produced, n, raw, kScale);
-        if (produced >= n) return;
+        if (produced >= n)
+          return;
       }
       const std::size_t available = CACHE_SIZE - idx;
       const std::size_t need = (n - produced + 1) / 2;
-      const std::size_t entries =
-          (need < available) ? need : available;
+      const std::size_t entries = (need < available) ? need : available;
       const auto &cache = rng.cache();
       for (std::size_t i = 0; i < entries; ++i) {
         data_from_u64_f32(out, produced, n, cache[idx + i], kScale);
@@ -224,12 +208,12 @@ private:
         uint64_t raw = rng();
         idx = rng.cache_index();
         data_from_u64_u32(out, produced, n, raw);
-        if (produced >= n) return;
+        if (produced >= n)
+          return;
       }
       const std::size_t available = CACHE_SIZE - idx;
       const std::size_t need = (n - produced + 1) / 2;
-      const std::size_t entries =
-          (need < available) ? need : available;
+      const std::size_t entries = (need < available) ? need : available;
       const auto &cache = rng.cache();
       for (std::size_t i = 0; i < entries; ++i) {
         data_from_u64_u32(out, produced, n, cache[idx + i]);
@@ -238,19 +222,16 @@ private:
     }
   }
 
-  static void data_from_u64_f32(float *out, std::size_t &pos, std::size_t n,
-                                 uint64_t raw, float scale) noexcept {
-    out[pos++] =
-        static_cast<float>(static_cast<uint32_t>(raw >> 32) >> 8) * scale;
+  static void data_from_u64_f32(float *out, std::size_t &pos, std::size_t n, uint64_t raw, float scale) noexcept {
+    out[pos++] = static_cast<float>(static_cast<uint32_t>(raw >> 32) >> 8) * scale;
     if (pos < n)
-      out[pos++] =
-          static_cast<float>(static_cast<uint32_t>(raw) >> 8) * scale;
+      out[pos++] = static_cast<float>(static_cast<uint32_t>(raw) >> 8) * scale;
   }
 
-  static void data_from_u64_u32(uint32_t *out, std::size_t &pos,
-                                 std::size_t n, uint64_t raw) noexcept {
+  static void data_from_u64_u32(uint32_t *out, std::size_t &pos, std::size_t n, uint64_t raw) noexcept {
     out[pos++] = static_cast<uint32_t>(raw >> 32);
-    if (pos < n) out[pos++] = static_cast<uint32_t>(raw);
+    if (pos < n)
+      out[pos++] = static_cast<uint32_t>(raw);
   }
 
   void fill_uint64_cached(uint64_t *out, std::size_t n) noexcept {
@@ -261,13 +242,12 @@ private:
       if (idx == 0) {
         out[produced++] = rng();
         idx = rng.cache_index();
-        if (produced >= n) return;
+        if (produced >= n)
+          return;
       }
       const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t to_copy =
-          (n - produced < available) ? (n - produced) : available;
-      std::memcpy(out + produced, rng.cache().data() + idx,
-                  to_copy * sizeof(uint64_t));
+      const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
+      std::memcpy(out + produced, rng.cache().data() + idx, to_copy * sizeof(uint64_t));
       rng.set_cache_index(static_cast<std::uint8_t>(idx + to_copy));
       produced += to_copy;
     }
@@ -276,38 +256,32 @@ private:
 
 // ---------------------------------------------------------------------------
 // State serialization: SplitMix
-template <>
-nb::dict PyBitGenerator<simdrng::SplitMix>::get_state() const {
+template <> nb::dict PyBitGenerator<simdrng::SplitMix>::get_state() const {
   nb::dict d;
   d["s"] = rng.getState();
   return d;
 }
-template <>
-void PyBitGenerator<simdrng::SplitMix>::set_state(nb::dict d) {
-  rng.setState(nb::cast<uint64_t>(d["s"]));
-}
+template <> void PyBitGenerator<simdrng::SplitMix>::set_state(nb::dict d) { rng.setState(nb::cast<uint64_t>(d["s"])); }
 
 // ---------------------------------------------------------------------------
 // State serialization: XoshiroScalar
-template <>
-nb::dict PyBitGenerator<simdrng::XoshiroScalar>::get_state() const {
+template <> nb::dict PyBitGenerator<simdrng::XoshiroScalar>::get_state() const {
   auto s = rng.getState();
   nb::dict d;
   d["s"] = std::vector<uint64_t>(s.begin(), s.end());
   return d;
 }
-template <>
-void PyBitGenerator<simdrng::XoshiroScalar>::set_state(nb::dict d) {
+template <> void PyBitGenerator<simdrng::XoshiroScalar>::set_state(nb::dict d) {
   auto v = nb::cast<std::vector<uint64_t>>(d["s"]);
   std::array<uint64_t, 4> s;
-  for (int i = 0; i < 4; ++i) s[i] = v[i];
+  for (int i = 0; i < 4; ++i)
+    s[i] = v[i];
   rng.setState(s);
 }
 
 // ---------------------------------------------------------------------------
 // State serialization helper for Xoshiro SIMD/Native
-template <typename Rng>
-nb::dict get_xoshiro_cached_state(const Rng &rng) {
+template <typename Rng> nb::dict get_xoshiro_cached_state(const Rng &rng) {
   const auto sw = rng.simd_width();
   const std::size_t state_len = 4 * sw;
   std::vector<uint64_t> flat(state_len);
@@ -322,8 +296,7 @@ nb::dict get_xoshiro_cached_state(const Rng &rng) {
   return d;
 }
 
-template <typename Rng>
-void set_xoshiro_cached_state(Rng &rng, nb::dict d) {
+template <typename Rng> void set_xoshiro_cached_state(Rng &rng, nb::dict d) {
   auto flat = nb::cast<std::vector<uint64_t>>(d["s"]);
   rng.set_flat_state(flat.data());
   auto cache_vec = nb::cast<std::vector<uint64_t>>(d["cache"]);
@@ -334,31 +307,18 @@ void set_xoshiro_cached_state(Rng &rng, nb::dict d) {
 }
 
 // XoshiroSIMD
-template <>
-nb::dict PyBitGenerator<simdrng::XoshiroSIMD>::get_state() const {
-  return get_xoshiro_cached_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::XoshiroSIMD>::set_state(nb::dict d) {
-  set_xoshiro_cached_state(rng, d);
-}
+template <> nb::dict PyBitGenerator<simdrng::XoshiroSIMD>::get_state() const { return get_xoshiro_cached_state(rng); }
+template <> void PyBitGenerator<simdrng::XoshiroSIMD>::set_state(nb::dict d) { set_xoshiro_cached_state(rng, d); }
 
 // XoshiroNative
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <>
-nb::dict PyBitGenerator<simdrng::XoshiroNative>::get_state() const {
-  return get_xoshiro_cached_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::XoshiroNative>::set_state(nb::dict d) {
-  set_xoshiro_cached_state(rng, d);
-}
+template <> nb::dict PyBitGenerator<simdrng::XoshiroNative>::get_state() const { return get_xoshiro_cached_state(rng); }
+template <> void PyBitGenerator<simdrng::XoshiroNative>::set_state(nb::dict d) { set_xoshiro_cached_state(rng, d); }
 #endif
 
 // ---------------------------------------------------------------------------
 // State serialization helper for ChaCha SIMD/Native
-template <typename Rng>
-nb::dict get_chacha_state(const Rng &rng) {
+template <typename Rng> nb::dict get_chacha_state(const Rng &rng) {
   auto matrix = rng.getStateForSerde();
   auto rc = rng.result_cache();
   nb::dict d;
@@ -368,77 +328,41 @@ nb::dict get_chacha_state(const Rng &rng) {
   return d;
 }
 
-template <typename Rng>
-void set_chacha_state(Rng &rng, nb::dict d) {
+template <typename Rng> void set_chacha_state(Rng &rng, nb::dict d) {
   auto mv = nb::cast<std::vector<uint32_t>>(d["matrix"]);
   std::array<uint32_t, 16> matrix;
-  for (int i = 0; i < 16; ++i) matrix[i] = mv[i];
+  for (int i = 0; i < 16; ++i)
+    matrix[i] = mv[i];
   rng.setState(matrix);
   auto rcv = nb::cast<std::vector<uint64_t>>(d["result_cache"]);
   typename Rng::result_cache_type rc;
-  for (std::size_t i = 0; i < rc.size() && i < rcv.size(); ++i) rc[i] = rcv[i];
+  for (std::size_t i = 0; i < rc.size() && i < rcv.size(); ++i)
+    rc[i] = rcv[i];
   rng.set_result_cache(rc);
   rng.set_result_index(nb::cast<uint8_t>(d["result_index"]));
 }
 
 // ChaChaSIMD<8>, <12>, <20>
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaSIMD<8>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaSIMD<8>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaSIMD<12>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaSIMD<12>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaSIMD<20>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaSIMD<20>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
+template <> nb::dict PyBitGenerator<simdrng::ChaChaSIMD<8>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaSIMD<8>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
+template <> nb::dict PyBitGenerator<simdrng::ChaChaSIMD<12>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaSIMD<12>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
+template <> nb::dict PyBitGenerator<simdrng::ChaChaSIMD<20>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaSIMD<20>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
 
 // ChaChaNative<8>, <12>, <20>
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaNative<8>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaNative<8>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaNative<12>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaNative<12>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
-template <>
-nb::dict PyBitGenerator<simdrng::ChaChaNative<20>>::get_state() const {
-  return get_chacha_state(rng);
-}
-template <>
-void PyBitGenerator<simdrng::ChaChaNative<20>>::set_state(nb::dict d) {
-  set_chacha_state(rng, d);
-}
+template <> nb::dict PyBitGenerator<simdrng::ChaChaNative<8>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaNative<8>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
+template <> nb::dict PyBitGenerator<simdrng::ChaChaNative<12>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaNative<12>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
+template <> nb::dict PyBitGenerator<simdrng::ChaChaNative<20>>::get_state() const { return get_chacha_state(rng); }
+template <> void PyBitGenerator<simdrng::ChaChaNative<20>>::set_state(nb::dict d) { set_chacha_state(rng, d); }
 #endif
 
 // ---------------------------------------------------------------------------
 // State serialization helper for Philox SIMD/Native
-template <typename Rng>
-nb::dict get_philox_state(const Rng &rng) {
+template <typename Rng> nb::dict get_philox_state(const Rng &rng) {
   using word_type = typename Rng::word_type;
   auto ctr = rng.getCounterForSerde();
   auto key = rng.getKey();
@@ -451,15 +375,16 @@ nb::dict get_philox_state(const Rng &rng) {
   return d;
 }
 
-template <typename Rng>
-void set_philox_state(Rng &rng, nb::dict d) {
+template <typename Rng> void set_philox_state(Rng &rng, nb::dict d) {
   using word_type = typename Rng::word_type;
   auto cv = nb::cast<std::vector<word_type>>(d["counter"]);
   auto kv = nb::cast<std::vector<word_type>>(d["key"]);
   typename Rng::counter_type ctr;
   typename Rng::key_type key;
-  for (std::size_t i = 0; i < ctr.size() && i < cv.size(); ++i) ctr[i] = cv[i];
-  for (std::size_t i = 0; i < key.size() && i < kv.size(); ++i) key[i] = kv[i];
+  for (std::size_t i = 0; i < ctr.size() && i < cv.size(); ++i)
+    ctr[i] = cv[i];
+  for (std::size_t i = 0; i < key.size() && i < kv.size(); ++i)
+    key[i] = kv[i];
   rng.setState(ctr, key);
   auto cache_vec = nb::cast<std::vector<uint64_t>>(d["cache"]);
   auto &cache = rng.cache();
@@ -503,8 +428,7 @@ template <> void PyBitGenerator<Philox2x64Native_t>::set_state(nb::dict d) { set
 // Registration helpers to reduce boilerplate.
 
 // Base registration: capsule, random_raw, state, fill methods.
-template <typename Rng, typename Class>
-void register_base(Class &cls) {
+template <typename Rng, typename Class> void register_base(Class &cls) {
   cls.def("capsule", &PyBitGenerator<Rng>::capsule)
       .def("random_raw", &PyBitGenerator<Rng>::random_raw)
       .def("get_state", &PyBitGenerator<Rng>::get_state)
@@ -516,23 +440,18 @@ void register_base(Class &cls) {
 }
 
 // Jump registration for Xoshiro family.
-template <typename Rng>
-struct has_jump : std::false_type {};
-template <>
-struct has_jump<simdrng::XoshiroScalar> : std::true_type {};
-template <>
-struct has_jump<simdrng::XoshiroSIMD> : std::true_type {};
+template <typename Rng> struct has_jump : std::false_type {};
+template <> struct has_jump<simdrng::XoshiroScalar> : std::true_type {};
+template <> struct has_jump<simdrng::XoshiroSIMD> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <>
-struct has_jump<simdrng::XoshiroNative> : std::true_type {};
+template <> struct has_jump<simdrng::XoshiroNative> : std::true_type {};
 #endif
 
-template <typename Rng, typename Class>
-void register_jump(Class &cls) {
+template <typename Rng, typename Class> void register_jump(Class &cls) {
   if constexpr (has_jump<Rng>::value) {
-    cls.def("jump", [](PyBitGenerator<Rng> &self) { self.rng.jump(); })
-        .def("long_jump",
-             [](PyBitGenerator<Rng> &self) { self.rng.long_jump(); });
+    cls.def("jump", [](PyBitGenerator<Rng> &self) { self.rng.jump(); }).def("long_jump", [](PyBitGenerator<Rng> &self) {
+      self.rng.long_jump();
+    });
   }
 }
 
@@ -542,16 +461,14 @@ void register_jump(Class &cls) {
 // Python module
 NB_MODULE(simdrng_ext, m) {
   using PySplitMix = PyBitGenerator<simdrng::SplitMix>;
-  auto sm = nb::class_<PySplitMix>(m, "_SplitMix")
-                .def(nb::init<uint64_t>(), "seed"_a);
+  auto sm = nb::class_<PySplitMix>(m, "_SplitMix").def(nb::init<uint64_t>(), "seed"_a);
   register_base<simdrng::SplitMix>(sm);
 
   using PyXoshiro = PyBitGenerator<simdrng::XoshiroScalar>;
   auto xo = nb::class_<PyXoshiro>(m, "_Xoshiro")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
-                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                     "thread"_a, "cluster"_a);
+                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "thread"_a, "cluster"_a);
   register_base<simdrng::XoshiroScalar>(xo);
   register_jump<simdrng::XoshiroScalar>(xo);
 
@@ -559,8 +476,7 @@ NB_MODULE(simdrng_ext, m) {
   auto xs = nb::class_<PyXoshiroSIMD>(m, "_XoshiroSIMD")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
-                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                     "thread"_a, "cluster"_a);
+                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "thread"_a, "cluster"_a);
   register_base<simdrng::XoshiroSIMD>(xs);
   register_jump<simdrng::XoshiroSIMD>(xs);
 
@@ -569,8 +485,7 @@ NB_MODULE(simdrng_ext, m) {
   auto xn = nb::class_<PyXoshiroNative>(m, "_XoshiroNative")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
-                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                     "thread"_a, "cluster"_a);
+                .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "thread"_a, "cluster"_a);
   register_base<simdrng::XoshiroNative>(xn);
   register_jump<simdrng::XoshiroNative>(xn);
 #endif
@@ -581,28 +496,22 @@ NB_MODULE(simdrng_ext, m) {
   using PyChaCha8SIMD = PyBitGenerator<simdrng::ChaChaSIMD<8>>;
   auto c8s = nb::class_<PyChaCha8SIMD>(m, "_ChaCha8SIMD")
                  .def(nb::init<uint64_t>(), "seed"_a)
-                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                      "counter"_a, "nonce"_a)
-                 .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                      "counter"_a, "nonce"_a);
+                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                 .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaSIMD<8>>(c8s);
 
   using PyChaCha12SIMD = PyBitGenerator<simdrng::ChaChaSIMD<12>>;
   auto c12s = nb::class_<PyChaCha12SIMD>(m, "_ChaCha12SIMD")
                   .def(nb::init<uint64_t>(), "seed"_a)
-                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                       "counter"_a, "nonce"_a)
-                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                       "counter"_a, "nonce"_a);
+                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaSIMD<12>>(c12s);
 
   using PyChaCha20SIMD = PyBitGenerator<simdrng::ChaChaSIMD<20>>;
   auto c20s = nb::class_<PyChaCha20SIMD>(m, "_ChaCha20SIMD")
                   .def(nb::init<uint64_t>(), "seed"_a)
-                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                       "counter"_a, "nonce"_a)
-                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                       "counter"_a, "nonce"_a);
+                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaSIMD<20>>(c20s);
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
@@ -610,28 +519,22 @@ NB_MODULE(simdrng_ext, m) {
   using PyChaCha8Native = PyBitGenerator<simdrng::ChaChaNative<8>>;
   auto c8n = nb::class_<PyChaCha8Native>(m, "_ChaCha8Native")
                  .def(nb::init<uint64_t>(), "seed"_a)
-                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                      "counter"_a, "nonce"_a)
-                 .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                      "counter"_a, "nonce"_a);
+                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                 .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaNative<8>>(c8n);
 
   using PyChaCha12Native = PyBitGenerator<simdrng::ChaChaNative<12>>;
   auto c12n = nb::class_<PyChaCha12Native>(m, "_ChaCha12Native")
                   .def(nb::init<uint64_t>(), "seed"_a)
-                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                       "counter"_a, "nonce"_a)
-                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                       "counter"_a, "nonce"_a);
+                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaNative<12>>(c12n);
 
   using PyChaCha20Native = PyBitGenerator<simdrng::ChaChaNative<20>>;
   auto c20n = nb::class_<PyChaCha20Native>(m, "_ChaCha20Native")
                   .def(nb::init<uint64_t>(), "seed"_a)
-                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
-                       "counter"_a, "nonce"_a)
-                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
-                       "counter"_a, "nonce"_a);
+                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a, "counter"_a, "nonce"_a)
+                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a, "counter"_a, "nonce"_a);
   register_base<simdrng::ChaChaNative<20>>(c20n);
 #endif
 

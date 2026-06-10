@@ -23,8 +23,7 @@ using Pair4x64 = std::pair<Native4x64, Scalar4x64>;
 using Pair2x64 = std::pair<Native2x64, Scalar2x64>;
 
 // Test SIMD (Native) vs scalar consistency for all four NxW combos
-TEMPLATE_TEST_CASE("Philox SIMD vs scalar consistency", "[philox]",
-    Pair4x32, Pair2x32, Pair4x64, Pair2x64) {
+TEMPLATE_TEST_CASE("Philox SIMD vs scalar consistency", "[philox]", Pair4x32, Pair2x32, Pair4x64, Pair2x64) {
   using Native = typename TestType::first_type;
   using Scalar = typename TestType::second_type;
 
@@ -48,8 +47,7 @@ TEMPLATE_TEST_CASE("Philox SIMD vs scalar consistency", "[philox]",
 }
 
 // Test counter overflow with carry propagation within a SIMD batch
-TEMPLATE_TEST_CASE("Philox SIMD counter overflow", "[philox]",
-    Pair4x32, Pair2x32, Pair4x64, Pair2x64) {
+TEMPLATE_TEST_CASE("Philox SIMD counter overflow", "[philox]", Pair4x32, Pair2x32, Pair4x64, Pair2x64) {
   using Native = typename TestType::first_type;
   using Scalar = typename TestType::second_type;
   using word_type = typename Scalar::word_type;
@@ -91,8 +89,7 @@ using SIMD4x64 = simdrng::PhiloxSIMD<4, 64, 10>;
 using SIMD2x64 = simdrng::PhiloxSIMD<2, 64, 10>;
 
 // Test dispatch-based class: two instances with same seed produce same output
-TEMPLATE_TEST_CASE("Philox SIMD dispatch consistency", "[philox]",
-    SIMD4x32, SIMD2x32, SIMD4x64, SIMD2x64) {
+TEMPLATE_TEST_CASE("Philox SIMD dispatch consistency", "[philox]", SIMD4x32, SIMD2x32, SIMD4x64, SIMD2x64) {
   auto seed = std::random_device{}();
   INFO("SEED: " << seed);
 

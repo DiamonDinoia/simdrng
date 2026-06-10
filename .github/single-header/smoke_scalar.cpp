@@ -5,6 +5,6 @@
 
 int main() {
   simdrng::SplitMix s(42);
-  simdrng::Xoshiro  x(42);          // scalar engine in this variant
+  simdrng::Xoshiro x(42); // scalar engine in this variant
   return (s() == 0 || x() == 0) ? 1 : 0;
 }

@@ -9,10 +9,10 @@
 #include <cstdio>
 
 int main() {
-  simdrng::XoshiroNative    x(42);
+  simdrng::XoshiroNative x(42);
   simdrng::Philox4x64Native p(7);
   unsigned long long acc = x();
-  for (int i = 0; i < 4; ++i) acc ^= p();
-  std::printf("xoshiro_native=%llu philox_native_mix=%016llx\n",
-              (unsigned long long)x(), acc);
+  for (int i = 0; i < 4; ++i)
+    acc ^= p();
+  std::printf("xoshiro_native=%llu philox_native_mix=%016llx\n", (unsigned long long)x(), acc);
 }

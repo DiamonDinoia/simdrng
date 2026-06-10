@@ -73,7 +73,7 @@ public:
    * @param cluster_id The cluster ID.
    */
   SIMDRNG_ALWAYS_INLINE constexpr explicit XoshiroScalar(const result_type seed, const result_type thread_id,
-                                                      const result_type cluster_id) noexcept
+                                                         const result_type cluster_id) noexcept
       : XoshiroScalar(seed, thread_id) {
     for (result_type i = 0; i < cluster_id; ++i) {
       long_jump();
@@ -96,7 +96,7 @@ public:
    * @brief Returns the state of the generator.
    * @return The state of the generator.
    */
-  SIMDRNG_ALWAYS_INLINE constexpr const std::array<result_type, 4>& getState() const noexcept { return m_state; }
+  SIMDRNG_ALWAYS_INLINE constexpr const std::array<result_type, 4> &getState() const noexcept { return m_state; }
   SIMDRNG_ALWAYS_INLINE constexpr void setState(const std::array<result_type, 4> &state) noexcept { m_state = state; }
 
   /**

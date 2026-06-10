@@ -29,14 +29,14 @@ TEST_CASE("per-thread Xoshiro streams are race-free and independent", "[thread]"
       // Each thread seeds its own generator on a distinct jumped subsequence
       // and writes only into its own (disjoint) output vector.
       simdrng::Xoshiro rng(42u, static_cast<std::uint64_t>(t));
-      auto& dst = out[static_cast<std::size_t>(t)];
+      auto &dst = out[static_cast<std::size_t>(t)];
       dst.resize(kDraws);
       for (int i = 0; i < kDraws; ++i) {
         dst[static_cast<std::size_t>(i)] = rng();
       }
     });
   }
-  for (auto& th : pool) {
+  for (auto &th : pool) {
     th.join();
   }
 

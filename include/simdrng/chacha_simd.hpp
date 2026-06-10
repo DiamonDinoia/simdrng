@@ -46,8 +46,9 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
   static_assert(SIMD_WIDTH == 0 || MATRIX_WORDCOUNT % SIMD_WIDTH == 0,
                 "ChaCha state must divide evenly into SIMD segments");
   static constexpr std::uint8_t SIMD_WIDTH_MASK = SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(SIMD_WIDTH - 1) : 0;
-  static constexpr std::uint8_t BLOCK_SEGMENTCOUNT =
-      SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(MATRIX_WORDCOUNT / SIMD_WIDTH) : 0;
+  static constexpr std::uint8_t BLOCK_SEGMENTCOUNT = SIMD_WIDTH > 0
+                                                         ? static_cast<std::uint8_t>(MATRIX_WORDCOUNT / SIMD_WIDTH)
+                                                         : 0;
   static constexpr std::uint8_t cache_batchcount() noexcept {
     // Use 2 batches for 512-bit+ SIMD (fewer but wider blocks per batch).
     if constexpr (simd_type::size >= 16) {
@@ -70,16 +71,14 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
   alignas(simd_type::arch_type::alignment()) std::array<cache_batch_type, CACHE_BATCHCOUNT> m_cache;
   std::uint8_t m_cache_index = CACHE_BLOCKCOUNT;
 
-  explicit SIMDRNG_ALWAYS_INLINE ChaChaState(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter,
-                                          const input_word nonce) {
+  explicit SIMDRNG_ALWAYS_INLINE ChaChaState(const std::array<matrix_word, KEY_WORDCOUNT> &key,
+                                             const input_word counter, const input_word nonce) {
     m_state[0] = 0x61707865;
     m_state[1] = 0x3320646e;
     m_state[2] = 0x79622d32;
     m_state[3] = 0x6b206574;
 
-    poet::static_for<0, KEY_WORDCOUNT>([&](auto I) {
-      m_state[4 + I] = key[I];
-    });
+    poet::static_for<0, KEY_WORDCOUNT>([&](auto I) { m_state[4 + I] = key[I]; });
 
     m_state[12] = static_cast<matrix_word>(counter & 0xFFFFFFFF);
     m_state[13] = static_cast<matrix_word>(counter >> 32);
@@ -116,9 +115,7 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
 private:
   static constexpr std::array<matrix_word, SIMD_WIDTH> LANE_OFFSETS = [] {
     std::array<matrix_word, SIMD_WIDTH> offsets{};
-    poet::static_for<0, SIMD_WIDTH>([&](auto I) {
-      offsets[I] = static_cast<matrix_word>(I.value);
-    });
+    poet::static_for<0, SIMD_WIDTH>([&](auto I) { offsets[I] = static_cast<matrix_word>(I.value); });
     return offsets;
   }();
 
@@ -128,28 +125,23 @@ private:
     }
 
     std::array<matrix_word, SIMD_WIDTH> incs{};
-    poet::static_for<1, SIMD_WIDTH>([&](auto I) {
-      incs[I] = static_cast<matrix_word>(overflow_index < static_cast<matrix_word>(I.value));
-    });
+    poet::static_for<1, SIMD_WIDTH>(
+        [&](auto I) { incs[I] = static_cast<matrix_word>(overflow_index < static_cast<matrix_word>(I.value)); });
     return simd_type::load_unaligned(incs.data());
   }
 
   SIMDRNG_ALWAYS_INLINE static void init_state_batches(working_state_type &x, const matrix_type &state,
-                                                     simd_type lower_counter_inc,
-                                                     simd_type higher_counter_inc) noexcept {
-    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) {
-      x[I] = simd_type::broadcast(state[I]);
-    });
+                                                       simd_type lower_counter_inc,
+                                                       simd_type higher_counter_inc) noexcept {
+    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) { x[I] = simd_type::broadcast(state[I]); });
     x[12] += lower_counter_inc;
     x[13] += higher_counter_inc;
   }
 
   SIMDRNG_ALWAYS_INLINE static void add_original_state(working_state_type &x, const matrix_type &state,
-                                                     simd_type lower_counter_inc,
-                                                     simd_type higher_counter_inc) noexcept {
-    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) {
-      x[I] += simd_type::broadcast(state[I]);
-    });
+                                                       simd_type lower_counter_inc,
+                                                       simd_type higher_counter_inc) noexcept {
+    poet::static_for<0, MATRIX_WORDCOUNT>([&](auto I) { x[I] += simd_type::broadcast(state[I]); });
     x[12] += lower_counter_inc;
     x[13] += higher_counter_inc;
   }
@@ -160,9 +152,7 @@ private:
     poet::static_for<0, BLOCK_SEGMENTCOUNT>([&](auto Seg) {
       auto *SIMDRNG_RESTRICT segment_begin = working + Seg * SIMD_WIDTH;
       xsimd::transpose(segment_begin, segment_begin + SIMD_WIDTH);
-      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) {
-        cache_lanes[Lane][Seg] = segment_begin[Lane];
-      });
+      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) { cache_lanes[Lane][Seg] = segment_begin[Lane]; });
     });
   }
 
@@ -173,10 +163,18 @@ private:
 
   template <unsigned A, unsigned B, unsigned C, unsigned D>
   SIMDRNG_ALWAYS_INLINE static void quarter_round(working_state_type &x) noexcept {
-    x[A] += x[B]; x[D] ^= x[A]; x[D] = xsimd::rotl<16>(x[D]);
-    x[C] += x[D]; x[B] ^= x[C]; x[B] = xsimd::rotl<12>(x[B]);
-    x[A] += x[B]; x[D] ^= x[A]; x[D] = xsimd::rotl<8>(x[D]);
-    x[C] += x[D]; x[B] ^= x[C]; x[B] = xsimd::rotl<7>(x[B]);
+    x[A] += x[B];
+    x[D] ^= x[A];
+    x[D] = xsimd::rotl<16>(x[D]);
+    x[C] += x[D];
+    x[B] ^= x[C];
+    x[B] = xsimd::rotl<12>(x[B]);
+    x[A] += x[B];
+    x[D] ^= x[A];
+    x[D] = xsimd::rotl<8>(x[D]);
+    x[C] += x[D];
+    x[B] ^= x[C];
+    x[B] = xsimd::rotl<7>(x[B]);
   }
 
   SIMDRNG_ALWAYS_INLINE static void gen_block_batch(cache_batch_type &cache, const matrix_type &state) noexcept {
@@ -249,9 +247,7 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch /*arch*/) const n
   static_assert(alignof(State) <= 64, "ChaChaState exceeds StateStorage alignment");
   std::construct_at(static_cast<State *>(state_storage), key, counter, nonce);
   return {
-      +[](void *s) noexcept -> ChaChaSIMDInitResult::matrix_type {
-        return static_cast<State *>(s)->next_block();
-      },
+      +[](void *s) noexcept -> ChaChaSIMDInitResult::matrix_type { return static_cast<State *>(s)->next_block(); },
       +[](const void *s, bool prev) noexcept -> ChaChaSIMDInitResult::matrix_type {
         return static_cast<const State *>(s)->getState(prev);
       },
@@ -260,14 +256,12 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch /*arch*/) const n
         state->m_state = matrix;
         state->m_cache_index = State::CACHE_BLOCKCOUNT;
       },
-      +[](const void *s) noexcept -> std::uint8_t {
-        return static_cast<const State *>(s)->m_cache_index;
-      },
+      +[](const void *s) noexcept -> std::uint8_t { return static_cast<const State *>(s)->m_cache_index; },
       std::size_t{State::SIMD_WIDTH},
   };
 }
 
-#define SIMDRNG_CHACHA_EXTERN_TEMPLATE(R, Arch)                                                                           \
+#define SIMDRNG_CHACHA_EXTERN_TEMPLATE(R, Arch)                                                                        \
   extern template SIMDRNG_EXPORT ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()<Arch>(Arch) const noexcept
 
 #if SIMDRNG_ARCH_X86_64
@@ -284,11 +278,11 @@ SIMDRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::avx512bw);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::neon64);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::neon64);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::neon64);
-#  if XSIMD_WITH_SVE
+#if XSIMD_WITH_SVE
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::sve);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::sve);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(20, xsimd::sve);
-#  endif
+#endif
 #elif SIMDRNG_ARCH_RISCV64
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::detail::rvv<128>);
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(12, xsimd::detail::rvv<128>);
@@ -346,11 +340,10 @@ public:
   explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(result_type seed, const input_word counter = 0, const input_word nonce = 0)
       : ChaChaSIMD(seed_to_key(seed), counter, nonce) {}
 
-  explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter,
-                                          const input_word nonce) {
+  explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT> &key, const input_word counter,
+                                            const input_word nonce) {
     auto result =
-        xsimd::dispatch<dispatch_arch_list>(
-            internal::ChaChaSIMDInitFunctor<R>{m_state.data, key, counter, nonce})();
+        xsimd::dispatch<dispatch_arch_list>(internal::ChaChaSIMDInitFunctor<R>{m_state.data, key, counter, nonce})();
     m_next_block = result.next_block;
     m_get_state = result.get_state;
     m_set_state = result.set_state;
@@ -383,13 +376,9 @@ public:
     return m_get_state(m_state.data, m_result_index < m_result_cache.size());
   }
 
-  matrix_type getStateForSerde() const noexcept {
-    return m_get_state(m_state.data, false);
-  }
+  matrix_type getStateForSerde() const noexcept { return m_get_state(m_state.data, false); }
 
-  void setState(const matrix_type &matrix) noexcept {
-    m_set_state(m_state.data, matrix);
-  }
+  void setState(const matrix_type &matrix) noexcept { m_set_state(m_state.data, matrix); }
 
   const result_cache_type &result_cache() const noexcept { return m_result_cache; }
   void set_result_cache(const result_cache_type &cache) noexcept { m_result_cache = cache; }
@@ -452,7 +441,7 @@ public:
   explicit ChaChaNative(result_type seed, const input_word counter = 0, const input_word nonce = 0)
       : ChaChaNative(ChaChaSIMD<R>::seed_to_key(seed), counter, nonce) {}
 
-  ChaChaNative(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter, const input_word nonce)
+  ChaChaNative(const std::array<matrix_word, KEY_WORDCOUNT> &key, const input_word counter, const input_word nonce)
       : m_state(key, counter, nonce) {}
 
   SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
@@ -480,9 +469,7 @@ public:
     return m_state.getState(m_result_index < m_result_cache.size());
   }
 
-  matrix_type getStateForSerde() const noexcept {
-    return m_state.getState(false);
-  }
+  matrix_type getStateForSerde() const noexcept { return m_state.getState(false); }
 
   void setState(const matrix_type &matrix) noexcept {
     m_state.m_state = matrix;

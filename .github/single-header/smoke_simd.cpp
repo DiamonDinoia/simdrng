@@ -9,9 +9,10 @@
 #include "simdrng.hpp"
 
 int main() {
-  simdrng::XoshiroNative    x(42);
+  simdrng::XoshiroNative x(42);
   simdrng::Philox4x64Native p(7);
   unsigned long long acc = x();
-  for (int i = 0; i < 4; ++i) acc ^= p();
+  for (int i = 0; i < 4; ++i)
+    acc ^= p();
   return acc == 0 ? 1 : 0;
 }

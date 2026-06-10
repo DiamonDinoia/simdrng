@@ -3,14 +3,14 @@
 namespace simdrng {
 
 // Explicit template instantiation macros
-#define SIMDRNG_PHILOX_INSTANTIATE(N, W, R, Arch)                                                      \
-  template internal::PhiloxSIMDInitResult<N, W>                                                     \
-  internal::PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch) const noexcept
+#define SIMDRNG_PHILOX_INSTANTIATE(N, W, R, Arch)                                                                      \
+  template internal::PhiloxSIMDInitResult<N, W> internal::PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch)       \
+      const noexcept
 
-#define SIMDRNG_PHILOX_INSTANTIATE_ALL(Arch)                                                           \
-  SIMDRNG_PHILOX_INSTANTIATE(4, 32, 10, Arch);                                                        \
-  SIMDRNG_PHILOX_INSTANTIATE(2, 32, 10, Arch);                                                        \
-  SIMDRNG_PHILOX_INSTANTIATE(4, 64, 10, Arch);                                                        \
+#define SIMDRNG_PHILOX_INSTANTIATE_ALL(Arch)                                                                           \
+  SIMDRNG_PHILOX_INSTANTIATE(4, 32, 10, Arch);                                                                         \
+  SIMDRNG_PHILOX_INSTANTIATE(2, 32, 10, Arch);                                                                         \
+  SIMDRNG_PHILOX_INSTANTIATE(4, 64, 10, Arch);                                                                         \
   SIMDRNG_PHILOX_INSTANTIATE(2, 64, 10, Arch)
 
 #if SIMDRNG_ARCH_X86_64

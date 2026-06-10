@@ -28,17 +28,13 @@ using rvv128 = xsimd::detail::rvv<128>;
 // mulhilo) and byte/word permutes (AVX512BW, used by ChaCha shuffles).
 // avx512bw derives from avx512f, so the is_base_of_v<avx512f, ...> root check
 // below is still correct.
-using dispatch_arch_list = std::conditional_t<
-    std::is_base_of_v<xsimd::sse2, xsimd::best_arch> ||
-    std::is_base_of_v<xsimd::avx, xsimd::best_arch> ||
-    std::is_base_of_v<xsimd::avx512f, xsimd::best_arch>,
-    xsimd::arch_list<xsimd::avx512bw, xsimd::avx2, xsimd::sse2>,
-    std::conditional_t<
-        std::is_base_of_v<xsimd::neon, xsimd::best_arch>,
-        xsimd::arch_list<xsimd::neon64>,
-        xsimd::arch_list<rvv128>
-    >
->;
+using dispatch_arch_list =
+    std::conditional_t<std::is_base_of_v<xsimd::sse2, xsimd::best_arch> ||
+                           std::is_base_of_v<xsimd::avx, xsimd::best_arch> ||
+                           std::is_base_of_v<xsimd::avx512f, xsimd::best_arch>,
+                       xsimd::arch_list<xsimd::avx512bw, xsimd::avx2, xsimd::sse2>,
+                       std::conditional_t<std::is_base_of_v<xsimd::neon, xsimd::best_arch>,
+                                          xsimd::arch_list<xsimd::neon64>, xsimd::arch_list<rvv128>>>;
 
 } // namespace simdrng
 

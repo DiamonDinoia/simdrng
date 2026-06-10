@@ -9,12 +9,12 @@
 
 #include "version.hpp"
 
+#include "chacha.hpp"
 #include "macros.hpp"
+#include "philox.hpp"
 #include "splitmix.hpp"
 #include "xoshiro_scalar.hpp"
-#include "chacha.hpp"
-#include "philox.hpp"
 
-#include "xoshiro.hpp"        // Xoshiro alias (SIMD when available, else scalar)
-#include "chacha_simd.hpp"    // self-guarded by SIMDRNG_WITH_XSIMD
-#include "philox_simd.hpp"    // self-guarded by SIMDRNG_WITH_XSIMD
+#include "chacha_simd.hpp" // self-guarded by SIMDRNG_WITH_XSIMD
+#include "philox_simd.hpp" // self-guarded by SIMDRNG_WITH_XSIMD
+#include "xoshiro.hpp"     // Xoshiro alias (SIMD when available, else scalar)

@@ -13,7 +13,8 @@ configure_file(
     @ONLY
 )
 
-add_custom_target(doxygen
+add_custom_target(
+    doxygen
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DOXYGEN_OUTPUT_DIR}"
     COMMAND Doxygen::doxygen "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -21,11 +22,12 @@ add_custom_target(doxygen
     VERBATIM
 )
 
-add_custom_target(docs
-    COMMAND ${CMAKE_COMMAND} -E env
-            "BREATHE_PROJECT_XML=${DOXYGEN_XML_DIR}"
-            ${Python3_EXECUTABLE} -m sphinx -b html -W --keep-going
-            "${SPHINX_SOURCE}" "${SPHINX_BUILD}"
+add_custom_target(
+    docs
+    COMMAND
+        ${CMAKE_COMMAND} -E env "BREATHE_PROJECT_XML=${DOXYGEN_XML_DIR}"
+        ${Python3_EXECUTABLE} -m sphinx -b html -W --keep-going
+        "${SPHINX_SOURCE}" "${SPHINX_BUILD}"
     DEPENDS doxygen
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Building Sphinx HTML docs in ${SPHINX_BUILD}"

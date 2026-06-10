@@ -10,8 +10,7 @@ int main() {
   for (int i = 0; i < 4; ++i) {
     const auto x = a();
     const auto y = b();
-    std::cout << "a=" << x << " b=" << y
-              << (x == y ? " (match)\n" : " (MISMATCH)\n");
+    std::cout << "a=" << x << " b=" << y << (x == y ? " (match)\n" : " (MISMATCH)\n");
   }
   return 0;
 }

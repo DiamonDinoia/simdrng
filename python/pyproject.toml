@@ -37,4 +37,3 @@ before-all = "yum install -y libpfm-devel || (apt-get update && apt-get install 
 
 [tool.cibuildwheel.macos]
 environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }
-
