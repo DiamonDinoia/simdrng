@@ -26,6 +26,7 @@ Vigna.
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 
@@ -98,6 +99,16 @@ template <class Arch> struct XoshiroState {
   SIMDRNG_ALWAYS_INLINE constexpr void
   populate_cache(std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
     poet::static_for<0, CACHE_SIZE / SIMD_WIDTH>([&](auto I) { next().store_aligned(cache.data() + I * SIMD_WIDTH); });
+  }
+
+  // Generate `blocks` full CACHE_SIZE-value blocks straight to `out` (wide
+  // unaligned stores, no cache bounce). Advances the state by blocks*CACHE_SIZE
+  // outputs, exactly as that many populate_cache() calls would.
+  SIMDRNG_ALWAYS_INLINE void generate_blocks(result_type *SIMDRNG_RESTRICT out, std::size_t blocks) noexcept {
+    for (std::size_t b = 0; b < blocks; ++b) {
+      result_type *SIMDRNG_RESTRICT dst = out + b * CACHE_SIZE;
+      poet::static_for<0, CACHE_SIZE / SIMD_WIDTH>([&](auto I) { next().store_unaligned(dst + I * SIMD_WIDTH); });
+    }
   }
 
   /**
@@ -203,11 +214,13 @@ template <class Arch> struct XoshiroState {
  */
 struct XoshiroSIMDInitResult {
   using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<std::uint64_t, 256> &SIMDRNG_RESTRICT) noexcept;
+  using generate_fn = void (*)(void *SIMDRNG_RESTRICT, std::uint64_t *SIMDRNG_RESTRICT, std::size_t) noexcept;
   using jump_fn = void (*)(void *) noexcept;
   using get_state_fn = void (*)(const void *, std::uint64_t *) noexcept;
   using set_state_fn = void (*)(void *, const std::uint64_t *) noexcept;
   using simd_width_fn = std::uint8_t (*)() noexcept;
   populate_fn populate_cache;
+  generate_fn generate_blocks;
   jump_fn jump;
   jump_fn mid_jump;
   jump_fn long_jump;
@@ -236,6 +249,9 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
   return {
       +[](void *SIMDRNG_RESTRICT s, std::array<std::uint64_t, 256> &SIMDRNG_RESTRICT cache) noexcept {
         static_cast<State *>(s)->populate_cache(cache);
+      },
+      +[](void *SIMDRNG_RESTRICT s, std::uint64_t *SIMDRNG_RESTRICT out, std::size_t blocks) noexcept {
+        static_cast<State *>(s)->generate_blocks(out, blocks);
       },
       +[](void *s) noexcept { static_cast<State *>(s)->jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->mid_jump(); },
@@ -300,6 +316,43 @@ public:
 
   SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
 
+  // Bulk fill, bit-identical to n consecutive operator() calls (see XoshiroSIMD).
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    std::size_t produced = 0;
+    std::uint8_t idx = m_index;
+    if (idx != 0) {
+      const std::size_t avail = CACHE_SIZE - idx;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_cache.data() + idx, take * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(idx + take);
+      produced = take;
+    }
+    const std::size_t mid_blocks = (n - produced) / CACHE_SIZE;
+    if (mid_blocks != 0) {
+      m_state.generate_blocks(out + produced, mid_blocks);
+      produced += mid_blocks * CACHE_SIZE;
+    }
+    if (produced < n) {
+      m_state.populate_cache(m_cache);
+      const std::size_t rem = n - produced;
+      std::memcpy(out + produced, m_cache.data(), rem * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(rem);
+    }
+    m_index = idx;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    alignas(64) std::array<result_type, CACHE_SIZE> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < CACHE_SIZE ? (n - done) : CACHE_SIZE;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
+  }
+
   SIMDRNG_ALWAYS_INLINE auto getState(const std::size_t index) const noexcept { return m_state.getState(index); }
 
   SIMDRNG_ALWAYS_INLINE void jump() noexcept { m_state.jump(); }
@@ -347,6 +400,47 @@ public:
 
   SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
 
+  // Bulk fill: bit-identical to n consecutive operator() calls. Drains the
+  // partial cache prefix, generates the aligned middle with wide stores
+  // straight to `out` via a single dispatched call, then refills the cache for
+  // the < CACHE_SIZE tail and parks the cursor so the next operator() resumes
+  // the exact stream.
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    std::size_t produced = 0;
+    std::uint8_t idx = m_index;
+    if (idx != 0) {
+      const std::size_t avail = CACHE_SIZE - idx;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_cache.data() + idx, take * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(idx + take);
+      produced = take;
+    }
+    const std::size_t mid_blocks = (n - produced) / CACHE_SIZE;
+    if (mid_blocks != 0) {
+      m_generate(m_state.data, out + produced, mid_blocks);
+      produced += mid_blocks * CACHE_SIZE;
+    }
+    if (produced < n) {
+      m_populate_cache(m_state.data, m_cache);
+      const std::size_t rem = n - produced;
+      std::memcpy(out + produced, m_cache.data(), rem * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(rem);
+    }
+    m_index = idx;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    alignas(64) std::array<result_type, CACHE_SIZE> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < CACHE_SIZE ? (n - done) : CACHE_SIZE;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
+  }
+
   SIMDRNG_ALWAYS_INLINE void jump() noexcept { m_jump(m_state.data); }
   SIMDRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
   SIMDRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
@@ -365,6 +459,7 @@ public:
 protected:
   static constexpr std::uint16_t CACHE_SIZE = std::numeric_limits<std::uint8_t>::max() + 1;
   using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT) noexcept;
+  using generate_fn = void (*)(void *SIMDRNG_RESTRICT, result_type *SIMDRNG_RESTRICT, std::size_t) noexcept;
   using jump_fn = void (*)(void *) noexcept;
   using get_state_fn = void (*)(const void *, result_type *) noexcept;
   using set_state_fn = void (*)(void *, const result_type *) noexcept;
@@ -383,6 +478,7 @@ protected:
   alignas(64) std::array<result_type, CACHE_SIZE> m_cache{};
   alignas(64) StateStorage m_state{};
   populate_fn m_populate_cache = nullptr;
+  generate_fn m_generate = nullptr;
   jump_fn m_jump = nullptr;
   jump_fn m_mid_jump = nullptr;
   jump_fn m_long_jump = nullptr;

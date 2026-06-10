@@ -5,6 +5,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <type_traits>
@@ -365,6 +366,46 @@ public:
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
+  // Bulk fill, bit-identical to n consecutive operator() calls. Drains the
+  // partial result-cache prefix, then refills a block (8 results) at a time via
+  // the dispatched next_block and copies straight to `out`, always parking the
+  // last block in m_result_cache and the cursor so the next operator() resumes
+  // the exact stream.
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    constexpr std::size_t sz = MATRIX_WORDCOUNT / 2; // results per block (8)
+    std::size_t produced = 0;
+    std::uint8_t ri = m_result_index;
+    if (ri < sz) {
+      const std::size_t avail = sz - ri;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_result_cache.data() + ri, take * sizeof(result_type));
+      ri = static_cast<std::uint8_t>(ri + take);
+      produced = take;
+    }
+    while (produced < n) {
+      m_result_cache = block_to_results(m_next_block(m_state.data));
+      const std::size_t rem = n - produced;
+      const std::size_t take = rem < sz ? rem : sz;
+      std::memcpy(out + produced, m_result_cache.data(), take * sizeof(result_type));
+      produced += take;
+      ri = static_cast<std::uint8_t>(take); // sz -> cursor at end (exhausted)
+    }
+    m_result_index = ri;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    constexpr std::size_t kChunk = 256;
+    alignas(64) std::array<result_type, kChunk> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < kChunk ? (n - done) : kChunk;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
+  }
+
   SIMDRNG_ALWAYS_INLINE constexpr matrix_type block() noexcept {
     if (m_result_index < m_result_cache.size()) {
       auto cached_block = results_to_block(m_result_cache);
@@ -456,6 +497,42 @@ public:
 
   SIMDRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
+  }
+
+  // Bulk fill, bit-identical to n consecutive operator() calls (see ChaChaSIMD).
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    constexpr std::size_t sz = MATRIX_WORDCOUNT / 2;
+    std::size_t produced = 0;
+    std::uint8_t ri = m_result_index;
+    if (ri < sz) {
+      const std::size_t avail = sz - ri;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_result_cache.data() + ri, take * sizeof(result_type));
+      ri = static_cast<std::uint8_t>(ri + take);
+      produced = take;
+    }
+    while (produced < n) {
+      m_result_cache = ChaChaSIMD<R>::block_to_results(m_state.next_block());
+      const std::size_t rem = n - produced;
+      const std::size_t take = rem < sz ? rem : sz;
+      std::memcpy(out + produced, m_result_cache.data(), take * sizeof(result_type));
+      produced += take;
+      ri = static_cast<std::uint8_t>(take);
+    }
+    m_result_index = ri;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    constexpr std::size_t kChunk = 256;
+    alignas(64) std::array<result_type, kChunk> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < kChunk ? (n - done) : kChunk;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
   }
 
   SIMDRNG_ALWAYS_INLINE constexpr matrix_type block() noexcept {

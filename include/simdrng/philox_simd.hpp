@@ -5,6 +5,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <type_traits>
@@ -297,6 +298,44 @@ public:
 
   SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
 
+  // Bulk fill, bit-identical to n consecutive operator() calls. Drains the
+  // partial cache prefix, then refills the (SIMD-aligned) cache a block at a
+  // time and copies straight to `out`, parking the cursor for the tail so the
+  // next operator() resumes the exact stream. The cursor is a non-escaping
+  // local, so it stays in a register across the dispatched refill.
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    std::size_t produced = 0;
+    std::uint8_t idx = m_index;
+    if (idx != 0) {
+      const std::size_t avail = CACHE_SIZE - idx;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_cache.data() + idx, take * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(idx + take);
+      produced = take;
+    }
+    while (produced < n) {
+      m_populate_cache(m_state.data, m_cache);
+      const std::size_t rem = n - produced;
+      const std::size_t take = rem < CACHE_SIZE ? rem : CACHE_SIZE;
+      std::memcpy(out + produced, m_cache.data(), take * sizeof(result_type));
+      produced += take;
+      idx = static_cast<std::uint8_t>(take); // CACHE_SIZE -> 0 (uint8 wrap)
+    }
+    m_index = idx;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    alignas(64) std::array<result_type, CACHE_SIZE> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < CACHE_SIZE ? (n - done) : CACHE_SIZE;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
+  }
+
   counter_type getCounter() const noexcept { return m_get_counter(m_state.data, m_index != 0, m_index); }
 
   key_type getKey() const noexcept { return m_get_key(m_state.data); }
@@ -368,6 +407,40 @@ public:
   }
 
   SIMDRNG_ALWAYS_INLINE double uniform() noexcept { return static_cast<double>(operator()() >> 11) * 0x1.0p-53; }
+
+  // Bulk fill, bit-identical to n consecutive operator() calls (see PhiloxSIMD).
+  void generate(result_type *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    std::size_t produced = 0;
+    std::uint8_t idx = m_index;
+    if (idx != 0) {
+      const std::size_t avail = CACHE_SIZE - idx;
+      const std::size_t take = avail < n ? avail : n;
+      std::memcpy(out, m_cache.data() + idx, take * sizeof(result_type));
+      idx = static_cast<std::uint8_t>(idx + take);
+      produced = take;
+    }
+    while (produced < n) {
+      m_state.populate_cache(m_cache);
+      const std::size_t rem = n - produced;
+      const std::size_t take = rem < CACHE_SIZE ? rem : CACHE_SIZE;
+      std::memcpy(out + produced, m_cache.data(), take * sizeof(result_type));
+      produced += take;
+      idx = static_cast<std::uint8_t>(take);
+    }
+    m_index = idx;
+  }
+
+  void fill_uniform(double *SIMDRNG_RESTRICT out, std::size_t n) noexcept {
+    alignas(64) std::array<result_type, CACHE_SIZE> buf;
+    std::size_t done = 0;
+    while (done < n) {
+      const std::size_t take = (n - done) < CACHE_SIZE ? (n - done) : CACHE_SIZE;
+      generate(buf.data(), take);
+      for (std::size_t i = 0; i < take; ++i)
+        out[done + i] = static_cast<double>(buf[i] >> 11) * 0x1.0p-53;
+      done += take;
+    }
+  }
 
   counter_type getCounter() const noexcept { return m_state.getCounter(m_index != 0, m_index); }
 
