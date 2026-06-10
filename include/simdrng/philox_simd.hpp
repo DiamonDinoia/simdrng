@@ -42,6 +42,29 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
   static_assert(SIMD_WIDTH == 0 || BLOCKS_PER_CACHE % SIMD_WIDTH == 0,
                 "BLOCKS_PER_CACHE must be a multiple of SIMD_WIDTH");
 
+  // How many independent counter batches to run with their R-round chains
+  // interleaved. Each batch is a serial multiply-dependency chain that leaves
+  // most ALU ports idle while it waits on latency; interleaving K of them fills
+  // those ports. K is budgeted from the vector register file for *this* arch
+  // (poet::vector_register_count() is consteval and reflects the ISA the TU is
+  // compiled for: 16 for SSE2/AVX2, 32 for AVX-512), so each (N, W, Arch) combo
+  // gets a K sized to that arch with no per-combo special-casing.
+  //
+  // Budget: reserve half the register file for the K*N live counter words and
+  // half for the per-round transients (the mul_hilo 64x64->128 synthesis tree,
+  // hi/lo products, key broadcasts) -> K = (VREG/2)/N. On avx2 this is the
+  // measured sweet spot for N=4 (K=2; K=3 spills and regresses ~7%) and stays
+  // spill-safe for N=2 (K=4); on AVX-512 it scales to K=4 (N=4) / K=8 (N=2).
+  static constexpr std::uint16_t INTERLEAVE = []() constexpr -> std::uint16_t {
+    const std::size_t live_budget = poet::vector_register_count() / 2;
+    std::size_t k = live_budget / N;
+    if (k < 1)
+      k = 1;
+    if (k > BATCHES_PER_CACHE)
+      k = BATCHES_PER_CACHE;
+    return static_cast<std::uint16_t>(k);
+  }();
+
   counter_type m_counter;
   key_type m_key;
 
@@ -49,11 +72,30 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
       : m_counter(counter), m_key(key) {}
 
   SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
+    constexpr std::uint16_t K = INTERLEAVE;
+    // Index/extent arithmetic uses std::size_t (the native pointer-width index
+    // on this target): a narrow fixed-width loop counter would force the
+    // compiler to re-mask to width on every increment/compare. word_type stays
+    // exact (it defines the RNG/SIMD-lane semantics).
+    constexpr std::size_t STRIDE = static_cast<std::size_t>(SIMD_WIDTH) * RESULTS_PER_BLOCK;
+    constexpr std::size_t FULL_GROUPS = BATCHES_PER_CACHE / K;
+    constexpr std::size_t REMAINDER = BATCHES_PER_CACHE % K;
+
     auto counter = m_counter;
-    poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA {
-      gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK, counter, m_key);
-      advance_counter(counter, static_cast<word_type>(SIMD_WIDTH));
-    });
+    result_type *out = cache.data();
+    // Runtime loop (not static_for) over the full K-batch groups: this bounds
+    // the live set GCC sees to one group, so it can't unroll all
+    // BATCHES_PER_CACHE batches into one block and spill. The loop-carried
+    // counter/out keep iterations from being interleaved (and re-spilling).
+    for (std::size_t g = 0; g < FULL_GROUPS; ++g) {
+      gen_block_group<K>(out, counter, m_key);
+      out += static_cast<std::size_t>(K) * STRIDE;
+      advance_counter(counter, static_cast<word_type>(K * SIMD_WIDTH));
+    }
+    if constexpr (REMAINDER > 0) {
+      gen_block_group<REMAINDER>(out, counter, m_key);
+      advance_counter(counter, static_cast<word_type>(REMAINDER * SIMD_WIDTH));
+    }
     m_counter = counter;
   }
 
@@ -165,15 +207,32 @@ private:
     }
   }
 
-  static SIMDRNG_ALWAYS_INLINE void gen_block_batch(result_type *cache, const counter_type &counter,
+  // Generate G consecutive SIMD batches with their round chains interleaved.
+  // `counter` is the base for batch 0; batch b uses counter + b*SIMD_WIDTH and
+  // writes to cache + b*SIMD_WIDTH*RESULTS_PER_BLOCK, exactly as G separate
+  // sequential gen_block_batch calls would — so the output stays bit-identical;
+  // only the instruction schedule changes. G==1 is the plain single-batch path.
+  template <std::uint16_t G>
+  static SIMDRNG_ALWAYS_INLINE void gen_block_group(result_type *cache, counter_type counter,
                                                     const key_type &key) noexcept {
-    std::array<simd_type, N> ctr_simd;
-    init_counter_batch(ctr_simd, counter);
+    std::array<std::array<simd_type, N>, G> ctr_simd;
+    std::array<key_type, G> round_key;
+    poet::static_for<0, G>([&](auto B) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+      init_counter_batch(ctr_simd[B.value], counter);
+      round_key[B.value] = key;
+      advance_counter(counter, static_cast<word_type>(SIMD_WIDTH));
+    });
 
-    key_type round_key = key;
-    poet::static_for<0, R>([&](auto) SIMDRNG_ALWAYS_INLINE_LAMBDA { simd_single_round(ctr_simd, round_key); });
+    // Round-major over batch-minor: advance every batch by one round before
+    // moving to the next round, so the G independent multiply chains overlap.
+    poet::static_for<0, R>([&](auto) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+      poet::static_for<0, G>(
+          [&](auto B) SIMDRNG_ALWAYS_INLINE_LAMBDA { simd_single_round(ctr_simd[B.value], round_key[B.value]); });
+    });
 
-    store_blocks_to_cache(cache, ctr_simd);
+    poet::static_for<0, G>([&](auto B) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+      store_blocks_to_cache(cache + B.value * SIMD_WIDTH * RESULTS_PER_BLOCK, ctr_simd[B.value]);
+    });
   }
 };
 
