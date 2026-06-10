@@ -6,12 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
-  SCCACHE_GHA_ENABLED: "true"
-  CMAKE_C_COMPILER_LAUNCHER: sccache
-  CMAKE_CXX_COMPILER_LAUNCHER: sccache
-
 jobs:
   bench:
     name: ${{ matrix.compiler }}
@@ -23,23 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-bench-${{ matrix.compiler }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-bench-
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: ${{ matrix.compiler }}
-          cmake: true
-          ninja: true
-
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+          cache-key-prefix: cpm-bench-${{ matrix.compiler }}
 
       # The `bench` preset is Release with an x86-64-v3 (AVX2) baseline.
       - name: Configure

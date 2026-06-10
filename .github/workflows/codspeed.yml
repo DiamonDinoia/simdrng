@@ -12,32 +12,18 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
-  SCCACHE_GHA_ENABLED: "true"
-  CMAKE_C_COMPILER_LAUNCHER: sccache
-  CMAKE_CXX_COMPILER_LAUNCHER: sccache
-
 jobs:
   codspeed:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-codspeed-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-codspeed-
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: gcc-14
-          cmake: true
-          ninja: true
+          cache-key-prefix: cpm-codspeed
+          libpfm4: "false"
 
       # The `codspeed` preset enables SIMDRNG_ENABLE_CODSPEED (links codspeed-cpp)
       # and CODSPEED_MODE=instrumentation; pre-rename flags here used to be

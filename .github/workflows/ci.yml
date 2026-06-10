@@ -10,15 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Shared across every job: a workspace-local CPM source cache (restored by
-# actions/cache) and sccache as the compiler launcher. Both are no-ops when the
-# cache misses, so a cold run still works.
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
-  SCCACHE_GHA_ENABLED: "true"
-  CMAKE_C_COMPILER_LAUNCHER: sccache
-  CMAKE_CXX_COMPILER_LAUNCHER: sccache
-
 jobs:
   # ---------------------------------------------------------------------------
   # Linux x86. The library builds SSE2 / AVX2 / AVX-512 variants from a single
@@ -46,24 +37,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-ci-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-ci-
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Setup C++ toolchain
-        uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: ${{ matrix.compiler }}-${{ matrix.version }}
-          cmake: true
-          ninja: true
-
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+          cache-key-prefix: cpm-ci
 
       # Only avx512 needs emulation (no GitHub runner exposes AVX-512). The SDE
       # download has been seen to return a transient HTTP 202, so retry it.
@@ -125,24 +103,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-ci-arm-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-ci-arm-
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Setup C++ toolchain
-        uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: ${{ matrix.compiler }}-${{ matrix.version }}
-          cmake: true
-          ninja: true
-
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+          cache-key-prefix: cpm-ci-arm
 
       - name: Configure
         run: cmake --preset ci
@@ -169,21 +134,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-ci-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-ci-${{ matrix.os }}-
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Setup C++ toolchain
-        uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: ${{ matrix.compiler }}
-          cmake: true
-          ninja: true
+          cache-key-prefix: cpm-ci-${{ matrix.os }}
+          # macOS / Windows runners: no perf counters, and apt-get is unavailable.
+          libpfm4: "false"
 
       - name: Configure
         run: cmake --preset ci
@@ -202,17 +159,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-san-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-san-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-      - uses: aminya/setup-cpp@v1
-        with: { compiler: clang-20, cmake: true, ninja: true }
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+          compiler: clang-20
+          cache-key-prefix: cpm-san
       - run: cmake --preset sanitizers
       - run: cmake --build --preset sanitizers
       - run: ctest --preset sanitizers
@@ -226,22 +177,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-analysis-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-analysis-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-      - uses: aminya/setup-cpp@v1
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
           compiler: clang-20
-          cmake: true
-          ninja: true
-          clangtidy: true
-          cppcheck: true
-      - name: Install libpfm4
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
+          cache-key-prefix: cpm-analysis
+          analysis-tools: "true"
       - name: Configure + build (exports compile_commands.json)
         # Build first so generated headers (version.hpp) exist and the dispatch
         # TUs' compile commands are present for clang-tidy.
@@ -270,17 +211,12 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-cov-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-cov-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-      - uses: aminya/setup-cpp@v1
-        with: { compiler: gcc-14, cmake: true, ninja: true }
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y libpfm4-dev lcov
+          compiler: gcc-14
+          cache-key-prefix: cpm-cov
+          extra-apt-packages: lcov
       - run: cmake --preset coverage
       - run: cmake --build --preset coverage
       - run: ctest --preset coverage

@@ -6,29 +6,18 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
-  SCCACHE_GHA_ENABLED: "true"
-  CMAKE_C_COMPILER_LAUNCHER: sccache
-  CMAKE_CXX_COMPILER_LAUNCHER: sccache
-
 jobs:
   valgrind:
     name: memcheck
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
+      - name: Set up build
+        uses: ./.github/actions/setup-build
         with:
-          path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-valgrind-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-valgrind-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-      - uses: aminya/setup-cpp@v1
-        with: { compiler: gcc-14, cmake: true, ninja: true }
-      - name: Install Valgrind + libpfm4
-        run: sudo apt-get update && sudo apt-get install -y valgrind libpfm4-dev
+          compiler: gcc-14
+          cache-key-prefix: cpm-valgrind
+          extra-apt-packages: valgrind
       # No -march guard is needed: the valgrind preset disables examples and
       # -march=native, and the AVX-512 dispatch TU is never *executed* on the
       # AVX2 runner (xsimd::dispatch selects the runner's tier at runtime), so

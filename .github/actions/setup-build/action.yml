@@ -1,0 +1,75 @@
+name: Set up build
+description: >
+  Shared build setup repeated across the CI workflows: a workspace-local CPM
+  source cache, sccache as the compiler launcher, the C++ toolchain via
+  setup-cpp, and optional libpfm4 / analysis tools / extra apt packages. The
+  four sccache + CPM env vars are exported to $GITHUB_ENV so the calling job's
+  configure/build/test steps pick them up automatically.
+
+  The caller must run actions/checkout *before* this action: a local composite
+  action can only be resolved once the repository is on disk.
+
+inputs:
+  compiler:
+    description: Compiler passed to setup-cpp (e.g. gcc-14, clang-20, msvc, apple-clang).
+    required: true
+  cache-key-prefix:
+    description: Prefix for the CPM source-cache key (e.g. cpm-ci, cpm-tsan).
+    required: true
+  libpfm4:
+    description: Install libpfm4-dev (the benchmark perf counters need it). Linux only.
+    default: "true"
+  analysis-tools:
+    description: Also install clang-tidy and cppcheck via setup-cpp.
+    default: "false"
+  extra-apt-packages:
+    description: Extra apt packages to install, space-separated (e.g. "lcov valgrind").
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # Workspace-local CPM source cache + sccache launcher, shared by every job.
+    # Both are no-ops on a cache miss, so a cold run still works.
+    - name: Configure shared build env
+      shell: bash
+      run: |
+        {
+          echo "CPM_SOURCE_CACHE=${{ github.workspace }}/.cpm-cache"
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        } >> "$GITHUB_ENV"
+
+    - name: Cache CPM dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.cpm-cache
+        key: ${{ inputs.cache-key-prefix }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+        restore-keys: ${{ inputs.cache-key-prefix }}-
+
+    - uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: Setup C++ toolchain
+      uses: aminya/setup-cpp@v1
+      with:
+        compiler: ${{ inputs.compiler }}
+        cmake: true
+        ninja: true
+        clangtidy: ${{ inputs.analysis-tools }}
+        cppcheck: ${{ inputs.analysis-tools }}
+
+    # Linux-only: libpfm4 and any extra apt packages. Skipped entirely when
+    # neither is requested (so macOS / Windows runners never call apt-get).
+    - name: Install apt packages
+      if: inputs.libpfm4 == 'true' || inputs.extra-apt-packages != ''
+      shell: bash
+      run: |
+        pkgs="${{ inputs.extra-apt-packages }}"
+        if [ "${{ inputs.libpfm4 }}" = "true" ]; then
+          pkgs="libpfm4-dev $pkgs"
+        fi
+        pkgs="$(echo "$pkgs" | xargs)"
+        if [ -n "$pkgs" ]; then
+          sudo apt-get update && sudo apt-get install -y $pkgs
+        fi
