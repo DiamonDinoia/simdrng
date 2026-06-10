@@ -6,6 +6,7 @@
 #include <bit>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <type_traits>
 
 #include <poet/poet.hpp>
@@ -44,7 +45,7 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
       SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(std::countr_zero(static_cast<unsigned int>(SIMD_WIDTH))) : 0;
   static_assert(SIMD_WIDTH == 0 || MATRIX_WORDCOUNT % SIMD_WIDTH == 0,
                 "ChaCha state must divide evenly into SIMD segments");
-  static constexpr std::uint8_t SIMD_WIDTH_MASK = SIMD_WIDTH > 0 ? std::uint8_t(SIMD_WIDTH - 1) : 0;
+  static constexpr std::uint8_t SIMD_WIDTH_MASK = SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(SIMD_WIDTH - 1) : 0;
   static constexpr std::uint8_t BLOCK_SEGMENTCOUNT =
       SIMD_WIDTH > 0 ? static_cast<std::uint8_t>(MATRIX_WORDCOUNT / SIMD_WIDTH) : 0;
   static constexpr std::uint8_t cache_batchcount() noexcept {
@@ -113,7 +114,7 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
   }
 
 private:
-  static inline constexpr std::array<matrix_word, SIMD_WIDTH> LANE_OFFSETS = [] {
+  static constexpr std::array<matrix_word, SIMD_WIDTH> LANE_OFFSETS = [] {
     std::array<matrix_word, SIMD_WIDTH> offsets{};
     poet::static_for<0, SIMD_WIDTH>([&](auto I) {
       offsets[I] = static_cast<matrix_word>(I.value);
@@ -167,7 +168,7 @@ private:
 
   SIMDRNG_ALWAYS_INLINE static constexpr void advance_counter(matrix_type &state) noexcept {
     state[12] += SIMD_WIDTH;
-    state[13] += state[12] < SIMD_WIDTH;
+    state[13] += static_cast<matrix_word>(state[12] < SIMD_WIDTH);
   }
 
   template <unsigned A, unsigned B, unsigned C, unsigned D>
@@ -237,16 +238,16 @@ template <std::uint8_t R> struct ChaChaSIMDInitFunctor {
   const std::array<std::uint32_t, 8> key;
   const std::uint64_t counter, nonce;
 
-  template <class Arch> ChaChaSIMDInitResult operator()(Arch) const noexcept;
+  template <class Arch> ChaChaSIMDInitResult operator()(Arch /*arch*/) const noexcept;
 };
 
 template <std::uint8_t R>
 template <class Arch>
-ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch) const noexcept {
+ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch /*arch*/) const noexcept {
   using State = ChaChaState<Arch, R>;
   static_assert(sizeof(State) <= 2176, "ChaChaState exceeds StateStorage capacity");
   static_assert(alignof(State) <= 64, "ChaChaState exceeds StateStorage alignment");
-  new (state_storage) State(key, counter, nonce);
+  std::construct_at(static_cast<State *>(state_storage), key, counter, nonce);
   return {
       +[](void *s) noexcept -> ChaChaSIMDInitResult::matrix_type {
         return static_cast<State *>(s)->next_block();
@@ -336,8 +337,8 @@ public:
       z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
       z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
       z = z ^ (z >> 31);
-      key[i * 2] = static_cast<matrix_word>(z);
-      key[i * 2 + 1] = static_cast<matrix_word>(z >> 32);
+      key[std::size_t{i} * 2] = static_cast<matrix_word>(z);
+      key[std::size_t{i} * 2 + 1] = static_cast<matrix_word>(z >> 32);
     }
     return key;
   }

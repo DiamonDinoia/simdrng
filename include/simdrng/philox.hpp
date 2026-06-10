@@ -81,7 +81,7 @@ public:
   explicit SIMDRNG_ALWAYS_INLINE Philox(result_type seed, result_type counter = 0) noexcept
       : m_counter(counter_from_uint64(counter)), m_key(seed_to_key(seed)) {}
 
-  explicit SIMDRNG_ALWAYS_INLINE Philox(key_type key, counter_type counter) noexcept
+  explicit SIMDRNG_ALWAYS_INLINE Philox(const key_type &key, const counter_type &counter) noexcept
       : m_counter(counter), m_key(key) {}
 
   SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {

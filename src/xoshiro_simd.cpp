@@ -2,11 +2,14 @@
 
 namespace simdrng {
 
-XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id, const result_type cluster_id) noexcept
-    : m_cache{}, m_state{}, m_index{0} {
+XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id,
+                         const result_type cluster_id) noexcept {
   auto result =
       xsimd::dispatch<dispatch_arch_list>(
-          internal::XoshiroSIMDInitFunctor{m_state.data, seed, thread_id, cluster_id})();
+          internal::XoshiroSIMDInitFunctor{.state_storage = m_state.data,
+                                           .seed          = seed,
+                                           .thread_id     = thread_id,
+                                           .cluster_id    = cluster_id})();
   m_populate_cache = result.populate_cache;
   m_jump = result.jump;
   m_mid_jump = result.mid_jump;

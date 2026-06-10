@@ -117,7 +117,7 @@ public:
     result_type s3 = 0;
     for (const auto i : JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= m_state[0];
           s1 ^= m_state[1];
           s2 ^= m_state[2];
@@ -143,7 +143,7 @@ public:
     result_type s3 = 0;
     for (const auto i : JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= m_state[0];
           s1 ^= m_state[1];
           s2 ^= m_state[2];
@@ -171,7 +171,7 @@ public:
     result_type s3 = 0;
     for (const auto i : LONG_JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= m_state[0];
           s1 ^= m_state[1];
           s2 ^= m_state[2];

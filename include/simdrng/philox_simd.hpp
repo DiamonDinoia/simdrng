@@ -6,6 +6,7 @@
 #include <bit>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <type_traits>
 
 #include <poet/poet.hpp>
@@ -216,17 +217,17 @@ struct PhiloxSIMDInitFunctor {
   const counter_type counter;
 
   template <class Arch>
-  PhiloxSIMDInitResult<N, W> operator()(Arch) const noexcept;
+  PhiloxSIMDInitResult<N, W> operator()(Arch /*arch*/) const noexcept;
 };
 
 template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
 template <class Arch>
-PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch) const noexcept {
+PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arch*/) const noexcept {
   using State = PhiloxState<Arch, N, W, R>;
   using InitResult = PhiloxSIMDInitResult<N, W>;
   static_assert(sizeof(State) <= 256, "PhiloxState exceeds StateStorage capacity");
   static_assert(alignof(State) <= 64, "PhiloxState exceeds StateStorage alignment");
-  new (state_storage) State(key, counter);
+  std::construct_at(static_cast<State *>(state_storage), key, counter);
   return {
       +[](void *s, std::array<typename InitResult::result_type, InitResult::CACHE_SIZE> &cache) noexcept {
         static_cast<State *>(s)->populate_cache(cache);
@@ -301,7 +302,7 @@ public:
   explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(result_type seed, result_type counter = 0) noexcept
       : PhiloxSIMD(seed_to_key(seed), counter_from_uint64(counter)) {}
 
-  explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(key_type key, counter_type counter) noexcept {
+  explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(const key_type &key, const counter_type &counter) noexcept {
     auto result = xsimd::dispatch<dispatch_arch_list>(
         internal::PhiloxSIMDInitFunctor<N, W, R>{m_state.data, key, counter})();
     m_populate_cache = result.populate_cache;
@@ -389,7 +390,7 @@ public:
   explicit PhiloxNative(result_type seed, result_type counter = 0) noexcept
       : PhiloxNative(Philox<N, W, R>::seed_to_key(seed), Philox<N, W, R>::counter_from_uint64(counter)) {}
 
-  PhiloxNative(key_type key, counter_type counter) noexcept
+  PhiloxNative(const key_type &key, const counter_type &counter) noexcept
       : m_state(key, counter) {}
 
   SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {

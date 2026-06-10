@@ -27,6 +27,7 @@ Vigna.
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <memory>
 
 #include <poet/poet.hpp>
 
@@ -108,10 +109,13 @@ template <class Arch> struct XoshiroState {
    */
   SIMDRNG_ALWAYS_INLINE constexpr void jump() noexcept {
     constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
-    simd_type s0(0), s1(0), s2(0), s3(0);
+    simd_type s0(0);
+    simd_type s1(0);
+    simd_type s2(0);
+    simd_type s3(0);
     for (const auto i : JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= s[0];
           s1 ^= s[1];
           s2 ^= s[2];
@@ -131,10 +135,13 @@ template <class Arch> struct XoshiroState {
   SIMDRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
     constexpr result_type MID_JUMP[] = {0xc04b4f9c5d26c200, 0x69e6e6e431a2d40b, 0x4823b45b89dc689c,
                                          0xf567382197055bf0};
-    simd_type s0(0), s1(0), s2(0), s3(0);
+    simd_type s0(0);
+    simd_type s1(0);
+    simd_type s2(0);
+    simd_type s3(0);
     for (const auto i : MID_JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= s[0];
           s1 ^= s[1];
           s2 ^= s[2];
@@ -154,10 +161,13 @@ template <class Arch> struct XoshiroState {
   SIMDRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
     constexpr result_type LONG_JUMP[] = {0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241,
                                           0x39109bb02acbe635};
-    simd_type s0(0), s1(0), s2(0), s3(0);
+    simd_type s0(0);
+    simd_type s1(0);
+    simd_type s2(0);
+    simd_type s3(0);
     for (const auto i : LONG_JUMP)
       for (auto b = 0; b < 64; b++) {
-        if (i & result_type{1} << b) {
+        if ((i & result_type{1} << b) != 0U) {
           s0 ^= s[0];
           s1 ^= s[1];
           s2 ^= s[2];
@@ -221,14 +231,14 @@ struct XoshiroSIMDInitFunctor {
   void *state_storage;
   std::uint64_t seed, thread_id, cluster_id;
 
-  template <class Arch> XoshiroSIMDInitResult operator()(Arch) const noexcept;
+  template <class Arch> XoshiroSIMDInitResult operator()(Arch /*arch*/) const noexcept;
 };
 
-template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(Arch) const noexcept {
+template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(Arch /*arch*/) const noexcept {
   using State = XoshiroState<Arch>;
   static_assert(sizeof(State) <= 256, "XoshiroState exceeds StateStorage capacity");
   static_assert(alignof(State) <= 64, "XoshiroState exceeds StateStorage alignment");
-  auto *state = new (state_storage) State{};
+  auto *state = std::construct_at(static_cast<State *>(state_storage));
   state->seed(seed, thread_id, cluster_id);
   return {
       +[](void *s, std::array<std::uint64_t, 256> &cache) noexcept { static_cast<State *>(s)->populate_cache(cache); },
@@ -372,7 +382,7 @@ protected:
   };
 
   alignas(64) std::array<result_type, CACHE_SIZE> m_cache{};
-  alignas(64) StateStorage m_state;
+  alignas(64) StateStorage m_state{};
   populate_fn m_populate_cache = nullptr;
   jump_fn m_jump = nullptr;
   jump_fn m_mid_jump = nullptr;

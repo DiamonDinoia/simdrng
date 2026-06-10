@@ -1,3 +1,12 @@
+# Deliberately disabled checks of note (the rest are the usual noisy-domain opt-outs):
+#   portability-avoid-pragma-once          - `#pragma once` is a deliberate, universally-supported choice here.
+#   readability-redundant-parentheses      - the `(std::numeric_limits<T>::min)()` / `(max)()` parens are the
+#                                             intentional Windows min/max macro-suppression idiom; removing them is a bug.
+#   cppcoreguidelines-macro-usage          - the EXTERN_TEMPLATE / INSTANTIATE macros do token-pasting template
+#                                             instantiation that a constexpr function cannot express.
+#   cppcoreguidelines-owning-memory        - placement-new into static StateStorage is not owning allocation;
+#                                             gsl::owner false positive (we don't use the GSL).
+#   modernize-use-nodiscard                - fires on every trivial const accessor; the project keeps attribute noise minimal.
 ---
 Checks: "*,
         -abseil-*,
@@ -54,7 +63,12 @@ Checks: "*,
         -readability-function-cognitive-complexity,
         -readability-use-concise-preprocessor-directives,
         -modernize-use-constraints,
-        -readability-redundant-typename"
+        -readability-redundant-typename,
+        -portability-avoid-pragma-once,
+        -readability-redundant-parentheses,
+        -cppcoreguidelines-macro-usage,
+        -cppcoreguidelines-owning-memory,
+        -modernize-use-nodiscard"
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '(include/simdrng|src)/'
