@@ -8,6 +8,17 @@
 #define SIMDRNG_ALWAYS_INLINE inline
 #endif
 
+// Lambda call-operators can't take the `inline` keyword, so force-inlining a
+// lambda body (e.g. a poet::static_for callable) needs the bare attribute. GCC
+// otherwise outlines and clones heavy generic-lambda bodies per instantiation.
+#if defined(_MSC_VER)
+#define SIMDRNG_ALWAYS_INLINE_LAMBDA [[msvc::forceinline]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define SIMDRNG_ALWAYS_INLINE_LAMBDA __attribute__((always_inline))
+#else
+#define SIMDRNG_ALWAYS_INLINE_LAMBDA
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define SIMDRNG_FLATTEN __attribute__((flatten))
 #else

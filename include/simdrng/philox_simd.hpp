@@ -50,7 +50,7 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
 
   SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
     auto counter = m_counter;
-    poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) {
+    poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA {
       gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK, counter, m_key);
       advance_counter(counter, static_cast<word_type>(SIMD_WIDTH));
     });
@@ -96,32 +96,38 @@ private:
   static SIMDRNG_ALWAYS_INLINE void simd_single_round(std::array<simd_type, N> &ctr, key_type &key) noexcept {
     // Data-driven round, generic over N/2 counter pairs (see PhiloxConstants).
     // poet::static_for unrolls at compile time so the PERM lookups and lane
-    // indices fold away.
+    // indices fold away. The lambda bodies carry SIMDRNG_ALWAYS_INLINE_LAMBDA so
+    // GCC inlines them instead of cloning each heavy round into its own function.
     constexpr std::uint8_t PAIRS = N / 2;
     std::array<simd_type, PAIRS> hi;
     std::array<simd_type, PAIRS> lo;
-    poet::static_for<0, PAIRS>([&](auto J) {
+    poet::static_for<0, PAIRS>([&](auto J) SIMDRNG_ALWAYS_INLINE_LAMBDA {
       auto [h, l] = xsimd::mul_hilo(ctr[2 * J], simd_type::broadcast(C::MUL[J]));
       hi[J] = h;
       lo[J] = l;
     });
-    std::array<simd_type, N> out;
-    poet::static_for<0, PAIRS>([&](auto J) {
+    // Write the permuted result back into `ctr` in place. Pair J reads only its
+    // own old odd word ctr[2J+1] (consumed before being overwritten) and the
+    // already-computed hi/lo[PERM[J]]; the even word ctr[2J] is dead after the
+    // multiply above. So no extra `out[N]` array is needed — the per-batch
+    // persistent footprint stays at the N counter registers, which is the
+    // headroom the interleaved kernel below spends on ILP.
+    poet::static_for<0, PAIRS>([&](auto J) SIMDRNG_ALWAYS_INLINE_LAMBDA {
       constexpr std::uint8_t S = C::PERM[J];
-      out[2 * J] = hi[S] ^ ctr[2 * J + 1] ^ simd_type::broadcast(key[J]);
-      out[2 * J + 1] = lo[S];
+      const simd_type even = hi[S] ^ ctr[2 * J + 1] ^ simd_type::broadcast(key[J]);
+      ctr[2 * J + 1] = lo[S];
+      ctr[2 * J] = even;
     });
-    ctr = out;
-    poet::static_for<0, PAIRS>([&](auto J) { key[J] += C::BUMP[J]; });
+    poet::static_for<0, PAIRS>([&](auto J) SIMDRNG_ALWAYS_INLINE_LAMBDA { key[J] += C::BUMP[J]; });
   }
 
   static SIMDRNG_ALWAYS_INLINE void init_counter_batch(std::array<simd_type, N> &ctr_simd,
                                                        const counter_type &counter) noexcept {
     alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> offsets{};
-    poet::static_for<0, SIMD_WIDTH>([&](auto I) { offsets[I] = static_cast<word_type>(I.value); });
+    poet::static_for<0, SIMD_WIDTH>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { offsets[I] = static_cast<word_type>(I.value); });
 
     auto carry = simd_type::load_aligned(offsets.data());
-    poet::static_for<0, N>([&](auto I) {
+    poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA {
       auto base = simd_type::broadcast(counter[I]);
       auto val = base + carry;
       ctr_simd[I] = val;
@@ -135,12 +141,13 @@ private:
                                                           const std::array<simd_type, N> &ctr_simd) noexcept {
     if constexpr (W == 64 && N == SIMD_WIDTH) {
       std::array<simd_type, SIMD_WIDTH> regs;
-      poet::static_for<0, N>([&](auto I) { regs[I] = ctr_simd[I]; });
+      poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { regs[I] = ctr_simd[I]; });
       xsimd::transpose(regs.data(), regs.data() + SIMD_WIDTH);
-      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) { regs[Lane].store_aligned(cache + Lane * RESULTS_PER_BLOCK); });
+      poet::static_for<0, SIMD_WIDTH>(
+          [&](auto Lane) SIMDRNG_ALWAYS_INLINE_LAMBDA { regs[Lane].store_aligned(cache + Lane * RESULTS_PER_BLOCK); });
     } else {
       alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> regs[N];
-      poet::static_for<0, N>([&](auto I) { ctr_simd[I].store_aligned(regs[I].data()); });
+      poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { ctr_simd[I].store_aligned(regs[I].data()); });
 
       for (std::uint8_t lane = 0; lane < SIMD_WIDTH; ++lane) {
         if constexpr (W == 32) {
@@ -164,7 +171,7 @@ private:
     init_counter_batch(ctr_simd, counter);
 
     key_type round_key = key;
-    poet::static_for<0, R>([&](auto) { simd_single_round(ctr_simd, round_key); });
+    poet::static_for<0, R>([&](auto) SIMDRNG_ALWAYS_INLINE_LAMBDA { simd_single_round(ctr_simd, round_key); });
 
     store_blocks_to_cache(cache, ctr_simd);
   }
