@@ -181,29 +181,34 @@ private:
 
   static SIMDRNG_ALWAYS_INLINE void store_blocks_to_cache(result_type *cache,
                                                           const std::array<simd_type, N> &ctr_simd) noexcept {
-    if constexpr (W == 64 && N == SIMD_WIDTH) {
+    // A block is RESULTS_PER_BLOCK u64 outputs; each output is assembled from
+    // WORDS_PER_RESULT = 64/W consecutive lane-words (1 for W=64, 2 for W=32).
+    // When each word maps 1:1 to an output (RESULTS_PER_BLOCK == N, i.e. every
+    // counter word is already a full u64) and the matrix is square
+    // (N == SIMD_WIDTH), the block-major layout is exactly the transpose of the
+    // N x SIMD_WIDTH counter matrix — a few shuffles instead of N*SIMD_WIDTH
+    // scalar lane extracts. This geometric predicate replaces the old `W == 64`
+    // literal; the generic scatter below handles every other (N, W, Arch) combo.
+    constexpr bool kSquareTranspose = (RESULTS_PER_BLOCK == N) && (N == SIMD_WIDTH);
+    if constexpr (kSquareTranspose) {
       std::array<simd_type, SIMD_WIDTH> regs;
       poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { regs[I] = ctr_simd[I]; });
       xsimd::transpose(regs.data(), regs.data() + SIMD_WIDTH);
       poet::static_for<0, SIMD_WIDTH>(
           [&](auto Lane) SIMDRNG_ALWAYS_INLINE_LAMBDA { regs[Lane].store_aligned(cache + Lane * RESULTS_PER_BLOCK); });
     } else {
+      constexpr std::uint8_t WORDS_PER_RESULT = static_cast<std::uint8_t>(64 / W);
       alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> regs[N];
       poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { ctr_simd[I].store_aligned(regs[I].data()); });
-
-      for (std::uint8_t lane = 0; lane < SIMD_WIDTH; ++lane) {
-        if constexpr (W == 32) {
-          for (std::uint8_t k = 0; k < RESULTS_PER_BLOCK; ++k) {
-            auto lo32 = static_cast<std::uint64_t>(regs[2 * k][lane]);
-            auto hi32 = static_cast<std::uint64_t>(regs[2 * k + 1][lane]);
-            cache[lane * RESULTS_PER_BLOCK + k] = lo32 | (hi32 << 32);
-          }
-        } else {
-          for (std::uint8_t k = 0; k < N; ++k) {
-            cache[lane * RESULTS_PER_BLOCK + k] = regs[k][lane];
-          }
-        }
-      }
+      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+        poet::static_for<0, RESULTS_PER_BLOCK>([&](auto K) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+          result_type acc = 0;
+          poet::static_for<0, WORDS_PER_RESULT>([&](auto Wd) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+            acc |= static_cast<result_type>(regs[K * WORDS_PER_RESULT + Wd][Lane]) << (Wd * W);
+          });
+          cache[Lane * RESULTS_PER_BLOCK + K] = acc;
+        });
+      });
     }
   }
 
