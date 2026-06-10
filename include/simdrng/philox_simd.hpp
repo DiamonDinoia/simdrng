@@ -47,7 +47,7 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
   explicit SIMDRNG_ALWAYS_INLINE PhiloxState(const key_type &key, const counter_type &counter) noexcept
       : m_counter(counter), m_key(key) {}
 
-  SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
+  SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
     auto counter = m_counter;
     poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) {
       gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK, counter, m_key);
@@ -177,7 +177,7 @@ template <std::uint8_t N, std::uint8_t W> struct PhiloxSIMDInitResult {
   using result_type = std::uint64_t;
   static constexpr std::uint16_t CACHE_SIZE = 256;
 
-  using populate_fn = void (*)(void *, std::array<result_type, CACHE_SIZE> &) noexcept;
+  using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT) noexcept;
   using get_counter_fn = counter_type (*)(const void *, bool, std::uint16_t) noexcept;
   using get_raw_counter_fn = counter_type (*)(const void *) noexcept;
   using get_key_fn = key_type (*)(const void *) noexcept;
@@ -211,7 +211,8 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arc
   static_assert(alignof(State) <= 64, "PhiloxState exceeds StateStorage alignment");
   std::construct_at(static_cast<State *>(state_storage), key, counter);
   return {
-      +[](void *s, std::array<typename InitResult::result_type, InitResult::CACHE_SIZE> &cache) noexcept {
+      +[](void *SIMDRNG_RESTRICT s,
+          std::array<typename InitResult::result_type, InitResult::CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
         static_cast<State *>(s)->populate_cache(cache);
       },
       +[](const void *s, bool prev, std::uint16_t idx) noexcept ->

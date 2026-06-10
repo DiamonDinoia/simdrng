@@ -217,7 +217,7 @@ private:
  */
 struct ChaChaSIMDInitResult {
   using matrix_type = std::array<std::uint32_t, 16>;
-  using next_block_fn = matrix_type (*)(void *) noexcept;
+  using next_block_fn = matrix_type (*)(void *SIMDRNG_RESTRICT) noexcept;
   using get_state_fn = matrix_type (*)(const void *, bool) noexcept;
   using set_state_fn = void (*)(void *, const matrix_type &) noexcept;
   using get_cache_index_fn = std::uint8_t (*)(const void *) noexcept;
@@ -247,7 +247,9 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch /*arch*/) const n
   static_assert(alignof(State) <= 64, "ChaChaState exceeds StateStorage alignment");
   std::construct_at(static_cast<State *>(state_storage), key, counter, nonce);
   return {
-      +[](void *s) noexcept -> ChaChaSIMDInitResult::matrix_type { return static_cast<State *>(s)->next_block(); },
+      +[](void *SIMDRNG_RESTRICT s) noexcept -> ChaChaSIMDInitResult::matrix_type {
+        return static_cast<State *>(s)->next_block();
+      },
       +[](const void *s, bool prev) noexcept -> ChaChaSIMDInitResult::matrix_type {
         return static_cast<const State *>(s)->getState(prev);
       },

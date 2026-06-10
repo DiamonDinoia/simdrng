@@ -95,7 +95,8 @@ template <class Arch> struct XoshiroState {
     return result;
   }
 
-  SIMDRNG_ALWAYS_INLINE constexpr void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr void
+  populate_cache(std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT cache) noexcept {
     poet::static_for<0, CACHE_SIZE / SIMD_WIDTH>([&](auto I) { next().store_aligned(cache.data() + I * SIMD_WIDTH); });
   }
 
@@ -201,7 +202,7 @@ template <class Arch> struct XoshiroState {
  * Result from the runtime dispatch initialization.
  */
 struct XoshiroSIMDInitResult {
-  using populate_fn = void (*)(void *, std::array<std::uint64_t, 256> &) noexcept;
+  using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<std::uint64_t, 256> &SIMDRNG_RESTRICT) noexcept;
   using jump_fn = void (*)(void *) noexcept;
   using get_state_fn = void (*)(const void *, std::uint64_t *) noexcept;
   using set_state_fn = void (*)(void *, const std::uint64_t *) noexcept;
@@ -233,7 +234,9 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
   auto *state = std::construct_at(static_cast<State *>(state_storage));
   state->seed(seed, thread_id, cluster_id);
   return {
-      +[](void *s, std::array<std::uint64_t, 256> &cache) noexcept { static_cast<State *>(s)->populate_cache(cache); },
+      +[](void *SIMDRNG_RESTRICT s, std::array<std::uint64_t, 256> &SIMDRNG_RESTRICT cache) noexcept {
+        static_cast<State *>(s)->populate_cache(cache);
+      },
       +[](void *s) noexcept { static_cast<State *>(s)->jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->mid_jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->long_jump(); },
@@ -361,7 +364,7 @@ public:
 
 protected:
   static constexpr std::uint16_t CACHE_SIZE = std::numeric_limits<std::uint8_t>::max() + 1;
-  using populate_fn = void (*)(void *, std::array<result_type, CACHE_SIZE> &) noexcept;
+  using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT) noexcept;
   using jump_fn = void (*)(void *) noexcept;
   using get_state_fn = void (*)(const void *, result_type *) noexcept;
   using set_state_fn = void (*)(void *, const result_type *) noexcept;
