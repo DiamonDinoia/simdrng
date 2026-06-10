@@ -50,6 +50,15 @@ template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
 struct is_philox<simdrng::PhiloxNative<N, W, R>> : std::true_type {};
 #endif
 
+// True for generators exposing the dispatched bulk-fill API
+// (generate(uint64*, n) / fill_uniform(double*, n)) — every SIMD/Native
+// generator. Scalar generators fall back to the per-sample loop.
+template <typename T, typename = void> struct has_bulk_fill : std::false_type {};
+template <typename T>
+struct has_bulk_fill<
+    T, std::void_t<decltype(std::declval<T &>().generate(std::declval<std::uint64_t *>(), std::size_t{}))>>
+    : std::true_type {};
+
 // ---------------------------------------------------------------------------
 // PyBitGenerator<Rng>: single template replacing DirectBitGen + per-gen wrappers.
 // Contains: Rng instance + bitgen_t (stable address, no heap indirection).
@@ -86,8 +95,8 @@ template <typename Rng> struct PyBitGenerator {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
-    if constexpr (is_xoshiro_cached<Rng>::value) {
-      fill_uniform_cached(data, n);
+    if constexpr (has_bulk_fill<Rng>::value) {
+      rng.fill_uniform(data, n);
     } else {
       for (std::size_t i = 0; i < n; ++i)
         data[i] = static_cast<double>(rng() >> 11) * kInvPow53;
@@ -99,8 +108,8 @@ template <typename Rng> struct PyBitGenerator {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
-    if constexpr (is_xoshiro_cached<Rng>::value) {
-      fill_uint64_cached(data, n);
+    if constexpr (has_bulk_fill<Rng>::value) {
+      rng.generate(data, n);
     } else {
       for (std::size_t i = 0; i < n; ++i)
         data[i] = rng();
@@ -113,10 +122,19 @@ template <typename Rng> struct PyBitGenerator {
     auto *data = out.data();
     const std::size_t n = out.size();
     constexpr float kScale = 1.0f / 16777216.0f; // 2^-24
-    if constexpr (is_xoshiro_cached<Rng>::value) {
-      fill_float32_cached(data, n);
+    if constexpr (has_bulk_fill<Rng>::value) {
+      // Generate the raw uint64 stream in chunks, then split 2 float32 each.
+      constexpr std::size_t kChunk = 256;
+      alignas(64) std::uint64_t buf[kChunk];
+      std::size_t pos = 0;
+      while (pos < n) {
+        const std::size_t need = (n - pos + 1) / 2;
+        const std::size_t take = need < kChunk ? need : kChunk;
+        rng.generate(buf, take);
+        for (std::size_t j = 0; j < take; ++j)
+          data_from_u64_f32(data, pos, n, buf[j], kScale);
+      }
     } else {
-      // Generic: 2 float32 per uint64
       std::size_t i = 0;
       for (; i + 1 < n; i += 2) {
         uint64_t raw = rng();
@@ -133,8 +151,17 @@ template <typename Rng> struct PyBitGenerator {
     nb::gil_scoped_release release;
     auto *data = out.data();
     const std::size_t n = out.size();
-    if constexpr (is_xoshiro_cached<Rng>::value) {
-      fill_uint32_cached(data, n);
+    if constexpr (has_bulk_fill<Rng>::value) {
+      constexpr std::size_t kChunk = 256;
+      alignas(64) std::uint64_t buf[kChunk];
+      std::size_t pos = 0;
+      while (pos < n) {
+        const std::size_t need = (n - pos + 1) / 2;
+        const std::size_t take = need < kChunk ? need : kChunk;
+        rng.generate(buf, take);
+        for (std::size_t j = 0; j < take; ++j)
+          data_from_u64_u32(data, pos, n, buf[j]);
+      }
     } else {
       std::size_t i = 0;
       for (; i + 1 < n; i += 2) {
@@ -152,76 +179,6 @@ template <typename Rng> struct PyBitGenerator {
   void set_state(nb::dict d);
 
 private:
-  // Cache-drain bulk fill for Xoshiro SIMD/Native (256-element cache).
-  void fill_uniform_cached(double *out, std::size_t n) noexcept {
-    constexpr std::size_t CACHE_SIZE = 256;
-    std::size_t produced = 0;
-    while (produced < n) {
-      auto idx = rng.cache_index();
-      if (idx == 0) {
-        out[produced++] = static_cast<double>(rng() >> 11) * kInvPow53;
-        idx = rng.cache_index();
-        if (produced >= n)
-          return;
-      }
-      const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
-      const auto &cache = rng.cache();
-      poet::dynamic_for<4>(std::size_t{0}, to_copy, [&](std::size_t i) {
-        out[produced + i] = static_cast<double>(cache[idx + i] >> 11) * kInvPow53;
-      });
-      rng.set_cache_index(static_cast<std::uint8_t>(idx + to_copy));
-      produced += to_copy;
-    }
-  }
-
-  void fill_float32_cached(float *out, std::size_t n) noexcept {
-    constexpr std::size_t CACHE_SIZE = 256;
-    constexpr float kScale = 1.0f / 16777216.0f;
-    std::size_t produced = 0;
-    while (produced < n) {
-      auto idx = rng.cache_index();
-      if (idx == 0) {
-        uint64_t raw = rng();
-        idx = rng.cache_index();
-        data_from_u64_f32(out, produced, n, raw, kScale);
-        if (produced >= n)
-          return;
-      }
-      const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t need = (n - produced + 1) / 2;
-      const std::size_t entries = (need < available) ? need : available;
-      const auto &cache = rng.cache();
-      for (std::size_t i = 0; i < entries; ++i) {
-        data_from_u64_f32(out, produced, n, cache[idx + i], kScale);
-      }
-      rng.set_cache_index(static_cast<std::uint8_t>(idx + entries));
-    }
-  }
-
-  void fill_uint32_cached(uint32_t *out, std::size_t n) noexcept {
-    constexpr std::size_t CACHE_SIZE = 256;
-    std::size_t produced = 0;
-    while (produced < n) {
-      auto idx = rng.cache_index();
-      if (idx == 0) {
-        uint64_t raw = rng();
-        idx = rng.cache_index();
-        data_from_u64_u32(out, produced, n, raw);
-        if (produced >= n)
-          return;
-      }
-      const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t need = (n - produced + 1) / 2;
-      const std::size_t entries = (need < available) ? need : available;
-      const auto &cache = rng.cache();
-      for (std::size_t i = 0; i < entries; ++i) {
-        data_from_u64_u32(out, produced, n, cache[idx + i]);
-      }
-      rng.set_cache_index(static_cast<std::uint8_t>(idx + entries));
-    }
-  }
-
   static void data_from_u64_f32(float *out, std::size_t &pos, std::size_t n, uint64_t raw, float scale) noexcept {
     out[pos++] = static_cast<float>(static_cast<uint32_t>(raw >> 32) >> 8) * scale;
     if (pos < n)
@@ -232,25 +189,6 @@ private:
     out[pos++] = static_cast<uint32_t>(raw >> 32);
     if (pos < n)
       out[pos++] = static_cast<uint32_t>(raw);
-  }
-
-  void fill_uint64_cached(uint64_t *out, std::size_t n) noexcept {
-    constexpr std::size_t CACHE_SIZE = 256;
-    std::size_t produced = 0;
-    while (produced < n) {
-      auto idx = rng.cache_index();
-      if (idx == 0) {
-        out[produced++] = rng();
-        idx = rng.cache_index();
-        if (produced >= n)
-          return;
-      }
-      const std::size_t available = CACHE_SIZE - idx;
-      const std::size_t to_copy = (n - produced < available) ? (n - produced) : available;
-      std::memcpy(out + produced, rng.cache().data() + idx, to_copy * sizeof(uint64_t));
-      rng.set_cache_index(static_cast<std::uint8_t>(idx + to_copy));
-      produced += to_copy;
-    }
   }
 };
 
