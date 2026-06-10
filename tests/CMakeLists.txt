@@ -138,7 +138,13 @@ add_executable(testPhilox test_philox.cpp)
 target_link_libraries(testPhilox PRIVATE simdrng Catch2::Catch2WithMain)
 add_test(NAME testPhilox COMMAND testPhilox)
 
-set(SIMDRNG_SCALAR_TEST_TARGETS testSplitMix testXoshiro testChaCha testPhilox)
+# Thread-safety smoke test (also the ThreadSanitizer target).
+find_package(Threads REQUIRED)
+add_executable(testThreadSafety test_thread_safety.cpp)
+target_link_libraries(testThreadSafety PRIVATE simdrng Catch2::Catch2WithMain Threads::Threads)
+add_test(NAME testThreadSafety COMMAND testThreadSafety)
+
+set(SIMDRNG_SCALAR_TEST_TARGETS testSplitMix testXoshiro testChaCha testPhilox testThreadSafety)
 foreach (_t IN LISTS SIMDRNG_SCALAR_TEST_TARGETS)
     simdrng_enable_warnings(${_t})
 endforeach ()

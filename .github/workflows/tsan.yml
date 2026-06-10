@@ -1,0 +1,38 @@
+name: ThreadSanitizer
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  SCCACHE_GHA_ENABLED: "true"
+  CMAKE_C_COMPILER_LAUNCHER: sccache
+  CMAKE_CXX_COMPILER_LAUNCHER: sccache
+
+jobs:
+  tsan:
+    name: TSan (thread-safety)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-tsan-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-tsan-
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: aminya/setup-cpp@v1
+        with: { compiler: clang-20, cmake: true, ninja: true }
+      - name: Configure (TSan preset)
+        run: cmake --preset tsan
+      # Scope TSan to the thread-safety target: per-thread seeding / jump streams
+      # exercised concurrently via std::thread (no OpenMP, so no uninstrumented
+      # runtime false positives).
+      - name: Build thread-safety test
+        run: cmake --build build/tsan --target testThreadSafety
+      - name: Run under ThreadSanitizer
+        run: ctest --test-dir build/tsan -R testThreadSafety --output-on-failure
