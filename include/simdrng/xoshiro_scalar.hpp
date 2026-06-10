@@ -96,7 +96,7 @@ public:
    * @brief Returns the state of the generator.
    * @return The state of the generator.
    */
-  SIMDRNG_ALWAYS_INLINE constexpr std::array<result_type, 4> getState() const noexcept { return m_state; }
+  SIMDRNG_ALWAYS_INLINE constexpr const std::array<result_type, 4>& getState() const noexcept { return m_state; }
   SIMDRNG_ALWAYS_INLINE constexpr void setState(const std::array<result_type, 4> &state) noexcept { m_state = state; }
 
   /**

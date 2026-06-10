@@ -38,7 +38,7 @@ public:
    * @param nonce Initial value of the nonce.
    */
   SIMDRNG_ALWAYS_INLINE explicit ChaCha(
-    const std::array<matrix_word, KEY_WORDCOUNT> key,
+    const std::array<matrix_word, KEY_WORDCOUNT>& key,
     const input_word counter,
     const input_word nonce
   ) noexcept {

@@ -69,9 +69,9 @@ struct PhiloxState {
     return ctr;
   }
 
-  counter_type getRawCounter() const noexcept { return m_counter; }
+  const counter_type& getRawCounter() const noexcept { return m_counter; }
 
-  key_type getKey() const noexcept { return m_key; }
+  const key_type& getKey() const noexcept { return m_key; }
 
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_counter = ctr;
@@ -360,7 +360,10 @@ private:
   };
 
   alignas(64) std::array<result_type, CACHE_SIZE> m_cache{};
-  alignas(64) StateStorage m_state;
+  // Value-initialised so the type-erased storage is never read uninitialised
+  // (the per-arch State is written into m_state.data by the dispatch functor in
+  // the constructor body).
+  alignas(64) StateStorage m_state{};
   populate_fn m_populate_cache = nullptr;
   get_counter_fn m_get_counter = nullptr;
   get_raw_counter_fn m_get_raw_counter = nullptr;

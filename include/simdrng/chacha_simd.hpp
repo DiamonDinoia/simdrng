@@ -69,7 +69,7 @@ template <class Arch, std::uint8_t R> struct ChaChaState {
   alignas(simd_type::arch_type::alignment()) std::array<cache_batch_type, CACHE_BATCHCOUNT> m_cache;
   std::uint8_t m_cache_index = CACHE_BLOCKCOUNT;
 
-  explicit SIMDRNG_ALWAYS_INLINE ChaChaState(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter,
+  explicit SIMDRNG_ALWAYS_INLINE ChaChaState(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter,
                                           const input_word nonce) {
     m_state[0] = 0x61707865;
     m_state[1] = 0x3320646e;
@@ -345,7 +345,7 @@ public:
   explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(result_type seed, const input_word counter = 0, const input_word nonce = 0)
       : ChaChaSIMD(seed_to_key(seed), counter, nonce) {}
 
-  explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter,
+  explicit SIMDRNG_ALWAYS_INLINE ChaChaSIMD(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter,
                                           const input_word nonce) {
     auto result =
         xsimd::dispatch<dispatch_arch_list>(
@@ -413,7 +413,11 @@ private:
     alignas(ALIGN) unsigned char data[SIZE];
   };
 
-  alignas(64) StateStorage m_state;
+  // Value-initialised so the type-erased storage is never read uninitialised
+  // (the per-arch State is written into m_state.data by the dispatch functor in
+  // the constructor body). Zeroing 2176 B once per construction is negligible
+  // next to the dispatch call that follows.
+  alignas(64) StateStorage m_state{};
   next_block_fn m_next_block = nullptr;
   get_state_fn m_get_state = nullptr;
   set_state_fn m_set_state = nullptr;
@@ -447,7 +451,7 @@ public:
   explicit ChaChaNative(result_type seed, const input_word counter = 0, const input_word nonce = 0)
       : ChaChaNative(ChaChaSIMD<R>::seed_to_key(seed), counter, nonce) {}
 
-  ChaChaNative(const std::array<matrix_word, KEY_WORDCOUNT> key, const input_word counter, const input_word nonce)
+  ChaChaNative(const std::array<matrix_word, KEY_WORDCOUNT>& key, const input_word counter, const input_word nonce)
       : m_state(key, counter, nonce) {}
 
   SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {

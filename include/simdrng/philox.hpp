@@ -105,7 +105,7 @@ public:
     return m_counter;
   }
 
-  key_type getKey() const noexcept { return m_key; }
+  const key_type& getKey() const noexcept { return m_key; }
 
   void setCounter(const counter_type &ctr) noexcept {
     m_counter = ctr;
@@ -117,7 +117,7 @@ public:
     m_result_index = RESULTS_PER_BLOCK;
   }
 
-  counter_type getCounterForSerde() const noexcept {
+  const counter_type& getCounterForSerde() const noexcept {
     return m_counter;
   }
 
