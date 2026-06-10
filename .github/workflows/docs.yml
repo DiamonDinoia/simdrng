@@ -28,7 +28,20 @@ jobs:
         with: { python-version: "3.11" }
 
       - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      # Ubuntu's apt Doxygen (1.9.8) emits trailing-`auto` return types that the
+      # Sphinx C++ domain cannot parse, which fails the `-W` build. Install the
+      # upstream binary (matches the version used for local validation) so the
+      # C++ API parses cleanly and `-W` stays strict.
+      - name: Install Doxygen
+        env:
+          DOXYGEN_VERSION: "1.15.0"
+        run: |
+          curl -fsSL -o /tmp/doxygen.tgz \
+            "https://github.com/doxygen/doxygen/releases/download/Release_${DOXYGEN_VERSION//./_}/doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
+          sudo tar -xzf /tmp/doxygen.tgz -C /opt
+          echo "/opt/doxygen-${DOXYGEN_VERSION}/bin" >> "$GITHUB_PATH"
 
       - name: Install Sphinx deps
         run: pip install -r docs/requirements.txt
