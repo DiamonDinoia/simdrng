@@ -35,13 +35,9 @@ jobs:
       # upstream binary (matches the version used for local validation) so the
       # C++ API parses cleanly and `-W` stays strict.
       - name: Install Doxygen
-        env:
-          DOXYGEN_VERSION: "1.15.0"
-        run: |
-          curl -fsSL -o /tmp/doxygen.tgz \
-            "https://github.com/doxygen/doxygen/releases/download/Release_${DOXYGEN_VERSION//./_}/doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
-          sudo tar -xzf /tmp/doxygen.tgz -C /opt
-          echo "/opt/doxygen-${DOXYGEN_VERSION}/bin" >> "$GITHUB_PATH"
+        uses: ssciwr/doxygen-install@v2.0.1
+        with:
+          version: "1.15.0"
 
       - name: Install Sphinx deps
         run: pip install -r docs/requirements.txt
