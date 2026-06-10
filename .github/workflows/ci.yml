@@ -10,11 +10,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Shared across every job: a workspace-local CPM source cache (restored by
+# actions/cache) and sccache as the compiler launcher. Both are no-ops when the
+# cache misses, so a cold run still works.
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  SCCACHE_GHA_ENABLED: "true"
+  CMAKE_C_COMPILER_LAUNCHER: sccache
+  CMAKE_CXX_COMPILER_LAUNCHER: sccache
+
 jobs:
   # ---------------------------------------------------------------------------
   # Linux x86. The library builds SSE2 / AVX2 / AVX-512 variants from a single
   # compile (per-arch TUs in src/, selected at runtime via xsimd::dispatch).
-  # So the matrix varies RUNTIME ISA via Intel SDE, not compile flags.
+  # GitHub x86 runners are AVX2, so `native`/`sse2`/`avx2` all run natively and
+  # exercise the AVX2 tier; only `avx512` needs Intel SDE to emulate a CPU the
+  # runner can't provide, so dispatch selects the AVX-512 tier.
   # ---------------------------------------------------------------------------
   linux-x86:
     name: linux-x86 / ${{ matrix.compiler }}-${{ matrix.version }} / ${{ matrix.isa }}
@@ -24,8 +35,6 @@ jobs:
       matrix:
         compiler: [gcc, clang]
         version: ["14", "20"]
-        # native = whatever the runner exposes (AVX2 today). SDE variants emulate
-        # specific microarchitectures so xsimd::dispatch selects each SIMD tier.
         isa: [native, sse2, avx2, avx512]
         exclude:
           - { compiler: gcc, version: "20" }
@@ -37,6 +46,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-ci-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-ci-
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
         with:
@@ -47,38 +65,44 @@ jobs:
       - name: Install libpfm4
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
 
-      - name: Setup Intel SDE (emulated runs)
-        if: matrix.isa != 'native'
-        uses: petarpetrovt/setup-sde@v3.0
+      # Only avx512 needs emulation (no GitHub runner exposes AVX-512). The SDE
+      # download has been seen to return a transient HTTP 202, so retry it.
+      - name: Setup Intel SDE (avx512 emulation)
+        if: matrix.isa == 'avx512'
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          environmentVariableName: SDE_PATH
+          action: petarpetrovt/setup-sde@v5.0
+          with: |
+            environmentVariableName: SDE_PATH
+          attempt_limit: 4
+          attempt_delay: 15000
 
       - name: Compute emulator
         id: flags
         run: |
-          case "${{ matrix.isa }}" in
-            native) echo "emulator=" >> "$GITHUB_OUTPUT" ;;
-            sse2)   echo "emulator=${SDE_PATH}/sde64;-p4p;--"  >> "$GITHUB_OUTPUT" ;;  # Pentium 4 Prescott: SSE3 max
-            avx2)   echo "emulator=${SDE_PATH}/sde64;-hsw;--"  >> "$GITHUB_OUTPUT" ;;  # Haswell: AVX2
-            avx512) echo "emulator=${SDE_PATH}/sde64;-skx;--"  >> "$GITHUB_OUTPUT" ;;  # Skylake-X: AVX-512 F/CD/BW/DQ/VL
-          esac
+          # native/sse2/avx2 run natively on the AVX2 runner; avx512 emulates
+          # Skylake-X (AVX-512 F/CD/BW/DQ/VL) so dispatch selects that tier.
+          if [ "${{ matrix.isa }}" = "avx512" ]; then
+            echo "emulator=${SDE_PATH}/sde64;-skx;--" >> "$GITHUB_OUTPUT"
+          else
+            echo "emulator=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure
-        # SIMDRNG_MARCH_NATIVE=OFF so binaries don't use instructions unavailable under
-        # SDE's emulated CPU (e.g. AVX2 on a -p4p run).
-        run: cmake --preset release -DENABLE_PYTHON=OFF -DMARCH_NATIVE=OFF
-             -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
+        # The `ci` preset is Release with tests + examples and -march=native OFF,
+        # so binaries stay within the configured/emulated ISA.
+        run: cmake --preset ci -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
 
       - name: Build
-        run: cmake --build build/release --parallel
+        run: cmake --build --preset ci
 
       - name: Test
-        # example_xoshiro_native is compiled with -march=native (host CPU),
-        # so it uses instructions SDE's emulated older CPU doesn't support.
-        # Exclude it on emulated runs.
+        # example_xoshiro_native is compiled -march=native (host CPU), so under
+        # SDE's emulated older CPU it would hit unsupported instructions; exclude
+        # it only on the emulated avx512 run.
         run: >
-          ctest --test-dir build/release --output-on-failure
-          ${{ matrix.isa != 'native' && '-E example_xoshiro_native' || '' }}
+          ctest --preset ci
+          ${{ matrix.isa == 'avx512' && '-E example_xoshiro_native' || '' }}
 
   # ---------------------------------------------------------------------------
   # Linux ARM: native NEON. SVE would require a library-side SVE dispatch
@@ -97,6 +121,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-ci-arm-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-ci-arm-
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
         with:
@@ -108,13 +141,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
 
       - name: Configure
-        run: cmake --preset release -DENABLE_PYTHON=OFF -DMARCH_NATIVE=OFF
+        run: cmake --preset ci
 
       - name: Build
-        run: cmake --build build/release --parallel
+        run: cmake --build --preset ci
 
       - name: Test
-        run: ctest --test-dir build/release --output-on-failure
+        run: ctest --preset ci
 
   # ---------------------------------------------------------------------------
   # macOS (Apple Silicon) and Windows MSVC: single native build each, no SIMD
@@ -132,6 +165,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-ci-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-ci-${{ matrix.os }}-
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Setup C++ toolchain
         uses: aminya/setup-cpp@v1
         with:
@@ -140,41 +182,53 @@ jobs:
           ninja: true
 
       - name: Configure
-        run: cmake --preset release -DENABLE_PYTHON=OFF
+        run: cmake --preset ci
 
       - name: Build
-        run: cmake --build build/release --parallel
+        run: cmake --build --preset ci
 
       - name: Test
-        run: ctest --preset test --output-on-failure
+        run: ctest --preset ci
 
   # ---------------------------------------------------------------------------
-  # Sanitizers, static analysis, coverage: unchanged.
+  # Sanitizers (ASan + UBSan): Debug build via the `sanitizers` preset.
   # ---------------------------------------------------------------------------
   sanitizers:
-    name: UBSan + ASan
+    name: ASan + UBSan
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-san-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-san-
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: aminya/setup-cpp@v1
         with: { compiler: clang-20, cmake: true, ninja: true }
       - name: Install libpfm4
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
-      - name: Configure
-        run: >
-          cmake -S . -B build/san -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
-          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
-      - run: cmake --build build/san --parallel
-      - run: ctest --test-dir build/san --output-on-failure
+      - run: cmake --preset sanitizers
+      - run: cmake --build --preset sanitizers
+      - run: ctest --preset sanitizers
 
+  # ---------------------------------------------------------------------------
+  # Static analysis: clang-tidy (full sweep) + cppcheck. The `static-analysis`
+  # preset exports compile_commands.json for a clang build with tests on.
+  # ---------------------------------------------------------------------------
   analysis:
     name: clang-tidy + cppcheck
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-analysis-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-analysis-
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: aminya/setup-cpp@v1
         with:
           compiler: clang-20
@@ -184,20 +238,27 @@ jobs:
           cppcheck: true
       - name: Install libpfm4
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
-      - run: cmake --preset release -DENABLE_PYTHON=OFF
-      - name: Run clang-tidy on changed files
+      - name: Configure + build (exports compile_commands.json)
+        # Build first so generated headers (version.hpp) exist and the dispatch
+        # TUs' compile commands are present for clang-tidy.
         run: |
-          files=$(git diff --name-only origin/main...HEAD -- '*.cpp' '*.hpp' || true)
-          if [ -n "$files" ]; then
-            clang-tidy -p build/release $files
-          fi
+          cmake --preset static-analysis
+          cmake --build --preset static-analysis
+      - name: clang-tidy (full sweep)
+        # Runs over the dispatch TUs in src/, which have real per-arch compile
+        # commands and transitively include every simdrng header; .clang-tidy's
+        # HeaderFilterRegex surfaces findings in include/simdrng + src. Informational
+        # (no --warnings-as-errors): the hard gate is cppcheck below.
+        run: clang-tidy -p build/static-analysis $(git ls-files 'src/*.cpp')
       - name: cppcheck (headers)
-        # Explicit file list: cppcheck's default extension set doesn't include .hpp,
-        # so passing include/ alone makes it find nothing and exit 1.
+        # Explicit file list: cppcheck's default extension set doesn't include
+        # .hpp, so passing include/ alone makes it find nothing and exit 1. Fails
+        # the job on any finding (the suite is clean / suppressed in-line).
         run: |
           find include -type f \( -name '*.hpp' -o -name '*.h' \) -print0 \
             | xargs -0 cppcheck --enable=warning,performance,portability \
-                --inline-suppr --language=c++ --std=c++20 --quiet -Iinclude
+                --inline-suppr --language=c++ --std=c++20 --quiet \
+                --error-exitcode=1 -Iinclude
 
   coverage:
     name: Coverage (gcc + lcov)
@@ -205,19 +266,20 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-cov-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-cov-
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: aminya/setup-cpp@v1
         with: { compiler: gcc-14, cmake: true, ninja: true }
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev lcov
-      - name: Configure
-        run: >
-          cmake -S . -B build/cov -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_FLAGS="--coverage -O0"
-          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
-          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
-      - run: cmake --build build/cov --parallel
-      - run: ctest --test-dir build/cov --output-on-failure
+      - run: cmake --preset coverage
+      - run: cmake --build --preset coverage
+      - run: ctest --preset coverage
       - name: Capture coverage
         # aminya/setup-cpp installs gcc-14 but /usr/bin/gcov stays at the
         # stock runner version; lcov's geninfo refuses the mismatch. Point
@@ -225,7 +287,7 @@ jobs:
         run: |
           lcov --gcov-tool "$(command -v gcov-14)" \
                --ignore-errors mismatch,source,gcov \
-               --directory build/cov --capture --output-file coverage.info
+               --directory build/coverage --capture --output-file coverage.info
           lcov --ignore-errors unused --remove coverage.info \
                '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
       - uses: codecov/codecov-action@v6

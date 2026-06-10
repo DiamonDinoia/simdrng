@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
 
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
 jobs:
   amalgamate:
     runs-on: ubuntu-24.04
@@ -20,6 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-singleheader-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-singleheader-
 
       - name: Set up Python
         uses: actions/setup-python@v5

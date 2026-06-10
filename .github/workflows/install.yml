@@ -24,11 +24,19 @@ jobs:
         with_xsimd: [ "ON", "OFF" ]
     env:
       PREFIX: ${{ github.workspace }}/_prefix
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # GenerateVersion.cmake reads git history for the -dev.N suffix
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-install-${{ matrix.with_xsimd }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-install-
 
       - name: Install build tooling
         run: sudo apt-get update && sudo apt-get install -y ninja-build

@@ -106,6 +106,30 @@ function(simdrng_configure_static_analysis target)
 endfunction()
 
 # -------------------------
+# Sanitizers
+# -------------------------
+# OFF | ON (ASan + UBSan) | TSAN. Applied globally (compile + link) so the
+# library, dispatch TUs, and tests are all instrumented. No -march guard is
+# needed: xsimd::dispatch only ever calls the SIMD tier the runtime CPU
+# supports, so the AVX-512 TU's instructions stay dormant on lesser CPUs.
+set(SIMDRNG_USE_SANITIZERS "OFF" CACHE STRING "Sanitizers: OFF, ON (ASan+UBSan), TSAN")
+set_property(CACHE SIMDRNG_USE_SANITIZERS PROPERTY STRINGS OFF ON TSAN)
+string(TOUPPER "${SIMDRNG_USE_SANITIZERS}" _simdrng_san_mode)
+set(_simdrng_san_flags)
+if (_simdrng_san_mode STREQUAL "OFF")
+elseif (_simdrng_san_mode STREQUAL "ON")
+    set(_simdrng_san_flags -fsanitize=address,undefined -fno-omit-frame-pointer)
+elseif (_simdrng_san_mode STREQUAL "TSAN")
+    set(_simdrng_san_flags -fsanitize=thread -fno-omit-frame-pointer)
+else ()
+    message(FATAL_ERROR "Unsupported SIMDRNG_USE_SANITIZERS value '${SIMDRNG_USE_SANITIZERS}'. Use one of: OFF, ON, TSAN.")
+endif ()
+if (_simdrng_san_flags)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:${_simdrng_san_flags}>)
+    add_link_options(${_simdrng_san_flags})
+endif ()
+
+# -------------------------
 # Coverage
 # -------------------------
 option(SIMDRNG_ENABLE_COVERAGE "Instrument the library and tests for coverage" OFF)

@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+  SCCACHE_GHA_ENABLED: "true"
+  CMAKE_C_COMPILER_LAUNCHER: sccache
+  CMAKE_CXX_COMPILER_LAUNCHER: sccache
+
 jobs:
   bench:
     name: ${{ matrix.compiler }}
@@ -17,6 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-bench-${{ matrix.compiler }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt') }}
+          restore-keys: cpm-bench-
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: aminya/setup-cpp@v1
         with:
           compiler: ${{ matrix.compiler }}
@@ -26,15 +41,12 @@ jobs:
       - name: Install libpfm4
         run: sudo apt-get update && sudo apt-get install -y libpfm4-dev
 
+      # The `bench` preset is Release with an x86-64-v3 (AVX2) baseline.
       - name: Configure
-        run: >
-          cmake -S . -B build/bench -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_FLAGS="-march=x86-64-v3 -O3"
-          -DENABLE_TESTS=ON -DENABLE_PYTHON=OFF
+        run: cmake --preset bench
 
       - name: Build
-        run: cmake --build build/bench --target benchmarks --parallel
+        run: cmake --build --preset bench
 
       - name: Run benchmarks
         run: |

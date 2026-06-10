@@ -59,22 +59,47 @@ else()
     )
 endif()
 list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/contrib)
-set(TEST_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 enable_language(C)
 
-# Download reference implementations here. The ChaCha reference implementation
-# requires multiple files because it transitively includes macros from them
-# (see https://cr.yp.to/chacha.html). Although the linked page links to ChaCha8
-# implementations, we download ChaCha20 versions instead. The files
-# ecrypt-{portable,config,machine}.h are taken from the Salsa20 reference
-# implementation rather than ChaCha20, since no ChaCha20 versions of these
-# appear to exist. Since ChaCha20 is a subdir in the Salsa20 directory in
-# EBACS, and given ChaCha20 is structured very similar to Salsa20, I can only
-# assume these header files are also the ones used for ChaCha20.
+# ---------------------------------------------------------------------------
+# Reference generators from https://prng.di.unimi.it/ (public domain / CC0).
+# Used by the SplitMix/Xoshiro tests and benchmarks as a ground-truth oracle.
+#
+# Cache them in the CPM source cache when one is configured (so CI restores
+# them alongside xsimd/poet/Catch2/...), else in a stable build-tree dir. The
+# download is STATUS-checked with a short retry and is a HARD ERROR on failure:
+# a silent empty include previously surfaced as `s`/`next` undeclared in the
+# benchmark build (the original CodSpeed failure). ChaCha uses Monocypher
+# (fetched via CPM below), not a downloaded reference.
+# ---------------------------------------------------------------------------
+if (DEFINED ENV{CPM_SOURCE_CACHE})
+    set(TEST_INCLUDE_DIR "$ENV{CPM_SOURCE_CACHE}/simdrng-reference")
+else ()
+    set(TEST_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_refcache")
+endif ()
 file(MAKE_DIRECTORY ${TEST_INCLUDE_DIR})
-file(DOWNLOAD https://prng.di.unimi.it/splitmix64.c ${TEST_INCLUDE_DIR}/splitmix64.c)
-file(DOWNLOAD https://prng.di.unimi.it/xoshiro256plusplus.c ${TEST_INCLUDE_DIR}/xoshiro256plusplus.c)
+
+function(simdrng_fetch_reference url dest)
+    if (EXISTS "${dest}")
+        return()
+    endif ()
+    set(_msg "no attempt made")
+    foreach (attempt RANGE 1 3)
+        file(DOWNLOAD "${url}" "${dest}" STATUS _st TLS_VERIFY ON)
+        list(GET _st 0 _code)
+        list(GET _st 1 _msg)
+        if (_code EQUAL 0)
+            return()
+        endif ()
+        message(STATUS "Reference download attempt ${attempt}/3 for ${url} failed: ${_msg}")
+        file(REMOVE "${dest}")
+    endforeach ()
+    message(FATAL_ERROR "Failed to download reference file ${url} after 3 attempts: ${_msg}")
+endfunction()
+
+simdrng_fetch_reference(https://prng.di.unimi.it/splitmix64.c ${TEST_INCLUDE_DIR}/splitmix64.c)
+simdrng_fetch_reference(https://prng.di.unimi.it/xoshiro256plusplus.c ${TEST_INCLUDE_DIR}/xoshiro256plusplus.c)
 
 # Use Monocypher for ChaCha20 (fetched via CPM)
 CPMAddPackage(

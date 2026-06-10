@@ -4,9 +4,9 @@
 // Linux when Google Benchmark is built with BENCHMARK_ENABLE_LIBPFM=ON
 // and libpfm4-dev is installed. Invoke:
 //
-//   ./benchmarks --benchmark_perf_counters=CYCLES,INSTRUCTIONS,\
-//                CACHE-MISSES,BRANCH-MISSES,BRANCHES \
-//                --benchmark_format=json --benchmark_out=bench.json
+//   ./benchmarks
+//     --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES
+//     --benchmark_format=json --benchmark_out=bench.json
 //
 // IPC = INSTRUCTIONS / CYCLES is computed downstream in
 // scripts/analyze_bench.py.
