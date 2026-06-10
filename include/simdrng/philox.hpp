@@ -50,6 +50,21 @@ template <> struct PhiloxConstants<2, 64> {
 
 } // namespace internal
 
+/**
+ * @class Philox
+ * @brief Philox counter-based RNG (Salmon et al., "Parallel Random Numbers: As
+ * Easy as 1, 2, 3", SC11).
+ *
+ * Philox is a counter-based generator: each output block is a keyed bijection of
+ * an incrementing counter, so an arbitrary stream position can be computed
+ * directly with no sequential dependency. That makes it a natural fit for
+ * parallel / GPU-style workloads where each work item derives its own
+ * non-overlapping sub-stream from (seed, counter).
+ *
+ * @tparam N Number of counter words per block (2 or 4).
+ * @tparam W Word width in bits (32 or 64).
+ * @tparam R Number of rounds (default 10, the reference strength).
+ */
 template <std::uint8_t N = 4, std::uint8_t W = 32, std::uint8_t R = 10> class Philox {
   static_assert(N == 2 || N == 4, "Philox N must be 2 or 4");
   static_assert(W == 32 || W == 64, "Philox W must be 32 or 64");
@@ -64,16 +79,39 @@ public:
   static constexpr auto RESULTS_PER_BLOCK = std::uint8_t{N * W / 64};
   using result_block_type = std::array<result_type, RESULTS_PER_BLOCK>;
 
+  /**
+   * @brief Smallest value operator() can return.
+   * @return 0.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
 
+  /**
+   * @brief Largest value operator() can return.
+   * @return 2^64 - 1.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
+  /**
+   * @brief Constructs the generator from a 64-bit seed and starting counter.
+   * @param seed Expanded into the Philox key via SplitMix.
+   * @param counter Initial counter (stream position); defaults to 0.
+   */
   explicit SIMDRNG_ALWAYS_INLINE Philox(result_type seed, result_type counter = 0) noexcept
       : m_counter(counter_from_uint64(counter)), m_key(seed_to_key(seed)) {}
 
+  /**
+   * @brief Constructs the generator from an explicit key and counter block.
+   * @param key The Philox key (N/2 words).
+   * @param counter The full counter block (N words).
+   */
   explicit SIMDRNG_ALWAYS_INLINE Philox(const key_type &key, const counter_type &counter) noexcept
       : m_counter(counter), m_key(key) {}
 
+  /**
+   * @brief Returns the next 64-bit output, generating a fresh block when the
+   * current one is exhausted.
+   * @return The next 64-bit output.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
     if (m_result_index >= RESULTS_PER_BLOCK) [[unlikely]] {
       m_result_cache = next_block();
@@ -82,10 +120,18 @@ public:
     return m_result_cache[m_result_index++];
   }
 
+  /**
+   * @brief Generates a uniform random number in the range [0, 1).
+   * @return A uniform random number.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
+  /**
+   * @brief Returns the counter of the block the most recent output came from.
+   * @return The current counter block (decremented past the in-flight block).
+   */
   counter_type getCounter() const noexcept {
     if (m_result_index < RESULTS_PER_BLOCK) {
       counter_type ctr = m_counter;
@@ -95,31 +141,61 @@ public:
     return m_counter;
   }
 
+  /**
+   * @brief Returns the Philox key.
+   * @return The current key.
+   */
   const key_type &getKey() const noexcept { return m_key; }
 
+  /**
+   * @brief Sets the counter and forces a fresh block on the next output.
+   * @param ctr The counter block to seek to.
+   */
   void setCounter(const counter_type &ctr) noexcept {
     m_counter = ctr;
     m_result_index = RESULTS_PER_BLOCK;
   }
 
+  /**
+   * @brief Sets the key and forces a fresh block on the next output.
+   * @param key The key to install.
+   */
   void setKey(const key_type &key) noexcept {
     m_key = key;
     m_result_index = RESULTS_PER_BLOCK;
   }
 
+  /**
+   * @brief Returns the raw internal counter (for serialization).
+   * @return The internal counter block, including the in-flight block.
+   */
   const counter_type &getCounterForSerde() const noexcept { return m_counter; }
 
+  /**
+   * @brief Restores both counter and key, forcing a fresh block next.
+   * @param ctr The counter block.
+   * @param key The key.
+   */
   void setState(const counter_type &ctr, const key_type &key) noexcept {
     m_counter = ctr;
     m_key = key;
     m_result_index = RESULTS_PER_BLOCK;
   }
 
+  /// @brief Returns the cached output block (for serialization).
   const result_block_type &result_cache() const noexcept { return m_result_cache; }
+  /// @brief Restores the cached output block (for serialization).
   void set_result_cache(const result_block_type &cache) noexcept { m_result_cache = cache; }
+  /// @brief Returns the index of the next output within the cached block.
   std::uint8_t result_index() const noexcept { return m_result_index; }
+  /// @brief Restores the index of the next output within the cached block.
   void set_result_index(std::uint8_t idx) noexcept { m_result_index = idx; }
 
+  /**
+   * @brief Expands a 64-bit seed into a Philox key via SplitMix.
+   * @param seed The user seed.
+   * @return The derived key.
+   */
   static constexpr key_type seed_to_key(result_type seed) noexcept {
     key_type key{};
     auto state = seed;
@@ -145,6 +221,11 @@ public:
     return key;
   }
 
+  /**
+   * @brief Packs a 64-bit counter into the N-word counter block.
+   * @param counter The scalar counter value.
+   * @return The counter block.
+   */
   static constexpr counter_type counter_from_uint64(result_type counter) noexcept {
     counter_type ctr{};
     if constexpr (W == 32) {
@@ -240,9 +321,13 @@ private:
   }
 };
 
+/// @brief Philox4x32-10: four 32-bit counter words, 10 rounds (the common default).
 using Philox4x32 = Philox<4, 32, 10>;
+/// @brief Philox2x32-10: two 32-bit counter words, 10 rounds.
 using Philox2x32 = Philox<2, 32, 10>;
+/// @brief Philox4x64-10: four 64-bit counter words, 10 rounds (widest stream).
 using Philox4x64 = Philox<4, 64, 10>;
+/// @brief Philox2x64-10: two 64-bit counter words, 10 rounds.
 using Philox2x64 = Philox<2, 64, 10>;
 
 } // namespace simdrng

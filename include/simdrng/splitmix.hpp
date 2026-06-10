@@ -27,10 +27,28 @@ Ported to C++ by Marco Barbone. Original implementation by Guy Steele.
 
 namespace simdrng {
 
+/**
+ * @class SplitMix
+ * @brief SplitMix64 — a fast 64-bit splittable generator used to seed the other engines.
+ *
+ * Given a single 64-bit seed it advances a Weyl sequence (the state is bumped by
+ * the golden-ratio constant 0x9e3779b97f4a7c15 each call) and applies an
+ * avalanche mix, producing a well-distributed stream of 64-bit values. simdrng
+ * uses it to expand a user seed into the larger state of the other generators,
+ * so that even low-entropy seeds (e.g. 0 or 1) yield sound starting states.
+ */
 class SplitMix {
 public:
+  /**
+   * @brief Constructs the generator from a 64-bit seed state.
+   * @param state The initial 64-bit state.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr explicit SplitMix(const std::uint64_t state) noexcept : m_state(state) {}
 
+  /**
+   * @brief Advances the state and returns the next 64-bit value.
+   * @return The next 64-bit output.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr std::uint64_t operator()() noexcept {
     std::uint64_t z = (m_state += 0x9e3779b97f4a7c15);
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
@@ -38,16 +56,32 @@ public:
     return z ^ (z >> 31);
   }
 
+  /**
+   * @brief Smallest value operator() can return.
+   * @return 0.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE std::uint64_t(min)() noexcept {
     return std::numeric_limits<std::uint64_t>::lowest();
   }
 
+  /**
+   * @brief Largest value operator() can return.
+   * @return 2^64 - 1.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE std::uint64_t(max)() noexcept {
     return std::numeric_limits<std::uint64_t>::max();
   }
 
+  /**
+   * @brief Returns the current 64-bit state.
+   * @return The current state.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr std::uint64_t getState() const noexcept { return m_state; }
 
+  /**
+   * @brief Restores the state, e.g. when resuming a saved stream.
+   * @param state The state to restore.
+   */
   SIMDRNG_ALWAYS_INLINE constexpr void setState(std::uint64_t state) noexcept { m_state = state; }
 
 private:

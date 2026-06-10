@@ -9,6 +9,19 @@
 
 namespace simdrng {
 
+/**
+ * @class ChaCha
+ * @brief ChaCha stream-cipher core repurposed as a counter-based RNG.
+ *
+ * Each 64-byte block is produced by running @p R rounds of the ChaCha
+ * quarter-round over a 4x4 state matrix built from a 256-bit key, a 64-bit
+ * counter and a 64-bit nonce, then adding the original matrix. Because the
+ * block is a pure function of (key, counter, nonce), streams are reproducible
+ * and seekable: bumping the counter selects the next non-overlapping block.
+ *
+ * @tparam R Number of rounds (default 20, i.e. ChaCha20; always rounded up to
+ *           an even number since odd and even rounds are issued in pairs).
+ */
 template <std::uint8_t R = 20> class ChaCha {
 
 protected:
@@ -22,8 +35,16 @@ public:
   using matrix_type = std::array<matrix_word, MATRIX_WORDCOUNT>;
   using result_cache_type = std::array<result_type, MATRIX_WORDCOUNT / 2>;
 
+  /**
+   * @brief Smallest value operator() can return.
+   * @return 0.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
 
+  /**
+   * @brief Largest value operator() can return.
+   * @return 2^64 - 1.
+   */
   static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
   /**
@@ -56,7 +77,7 @@ public:
    * @brief Generates the next 64-bit output.
    * @return The next 64-bit output.
    */
-  SIMDRNG_ALWAYS_INLINE constexpr result_type(operator())() noexcept { return next_result(); }
+  SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept { return next_result(); }
 
   /**
    * @brief Generates a uniform random number in the range [0, 1).

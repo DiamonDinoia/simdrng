@@ -84,7 +84,7 @@ public:
    * @brief Generates the next random number.
    * @return The next random number.
    */
-  SIMDRNG_ALWAYS_INLINE constexpr result_type(operator())() noexcept { return next(); }
+  SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept { return next(); }
 
   /**
    * @brief Generates a uniform random number in the range [0, 1).
