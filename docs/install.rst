@@ -8,6 +8,18 @@ Requirements
 - CMake 3.16+
 - For the Python bindings: Python 3.10+, numpy 1.23+
 
+Dependencies
+------------
+
+The SIMD backends use `xsimd <https://github.com/xtensor-stack/xsimd>`_ (pinned to
+upstream ``master``) and `poet <https://github.com/DiamonDinoia/poet>`_ for
+compile-time helpers. Both are fetched automatically at configure time, so no
+manual installation is required.
+
+Building with ``-DSIMDRNG_WITH_XSIMD=OFF`` produces a **dependency-free,
+header-only** library exposing only the scalar generators; in that mode
+``simdrng::Xoshiro`` aliases the scalar implementation.
+
 C++ via CMake presets
 ---------------------
 
@@ -18,6 +30,26 @@ C++ via CMake presets
    cmake --preset release
    cmake --build build/release
    ctest --test-dir build/release --output-on-failure
+
+C++ via install + ``find_package``
+----------------------------------
+
+.. code-block:: sh
+
+   cmake --preset release
+   cmake --build build/release
+   cmake --install build/release --prefix /path/to/prefix
+
+Then, from a downstream project:
+
+.. code-block:: cmake
+
+   find_package(simdrng CONFIG REQUIRED)
+   target_link_libraries(my_target PRIVATE simdrng::simdrng)
+
+The installed package config resolves its dependencies (``xsimd``, ``poet``) via
+``find_dependency`` — but only when built with xsimd. A scalar-only install
+(``-DSIMDRNG_WITH_XSIMD=OFF``) requires no dependencies on the consumer side.
 
 C++ via FetchContent
 --------------------
@@ -45,18 +77,23 @@ Python bindings
 Options
 -------
 
-+-----------------------+---------+---------------------------------------+
-| CMake option          | Default | Purpose                               |
-+=======================+=========+=======================================+
-| ``ENABLE_TESTS``      | ON      | Build Catch2 tests and benchmarks     |
-+-----------------------+---------+---------------------------------------+
-| ``ENABLE_PYTHON``     | ON      | Build nanobind Python extension       |
-+-----------------------+---------+---------------------------------------+
-| ``BUILD_EXAMPLES``    | OFF     | Build C++ examples under examples/cpp |
-+-----------------------+---------+---------------------------------------+
-| ``BUILD_DOCS``        | OFF     | Generate Sphinx/Doxygen docs          |
-+-----------------------+---------+---------------------------------------+
-| ``MARCH_NATIVE``      | OFF     | Compile benchmarks with ``-march=native``|
-+-----------------------+---------+---------------------------------------+
-| ``ENABLE_CODSPEED``   | OFF     | Link codspeed-cpp into the bench harness|
-+-----------------------+---------+---------------------------------------+
++----------------------------+---------+------------------------------------------+
+| CMake option               | Default | Purpose                                  |
++============================+=========+==========================================+
+| ``SIMDRNG_WITH_XSIMD``     | ON      | Build SIMD backends with xsimd           |
+|                            |         | (OFF = scalar-only header library)       |
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_BUILD_TESTS``    | ON      | Build Catch2 tests and benchmarks        |
+|                            |         | (follows ``BUILD_TESTING``)              |
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_BUILD_PYTHON``   | OFF     | Build nanobind Python extension          |
+|                            |         | (requires ``SIMDRNG_WITH_XSIMD``)        |
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_BUILD_EXAMPLES`` | OFF     | Build C++ examples under examples/cpp    |
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_BUILD_DOCS``     | OFF     | Generate Sphinx/Doxygen docs             |
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_MARCH_NATIVE``   | OFF     | Compile benchmarks with ``-march=native``|
++----------------------------+---------+------------------------------------------+
+| ``SIMDRNG_ENABLE_CODSPEED``| OFF     | Link codspeed-cpp into the bench harness |
++----------------------------+---------+------------------------------------------+

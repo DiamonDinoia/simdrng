@@ -8,12 +8,19 @@
 
 #include <poet/poet.hpp>
 
-#include "random/macros.hpp"
-#include "random/splitmix.hpp"
-#include "random/xoshiro_scalar.hpp"
-#include "random/xoshiro_simd.hpp"
-#include "random/chacha_simd.hpp"
-#include "random/philox_simd.hpp"
+#include "simdrng/macros.hpp"
+#include "simdrng/splitmix.hpp"
+#include "simdrng/xoshiro_scalar.hpp"
+#include "simdrng/xoshiro_simd.hpp"
+#include "simdrng/chacha_simd.hpp"
+#include "simdrng/philox_simd.hpp"
+
+// The Python bindings expose the SIMD generators, so they require a build with
+// xsimd. The build system enforces this (SIMDRNG_BUILD_PYTHON ⇒ SIMDRNG_WITH_XSIMD);
+// this guard documents the contract at the source level.
+#if !SIMDRNG_WITH_XSIMD
+#  error "The simdrng Python bindings require SIMDRNG_WITH_XSIMD=1"
+#endif
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -24,23 +31,23 @@ constexpr double kInvPow53 = 0x1.0p-53;
 // ---------------------------------------------------------------------------
 // Type traits for dispatch in bulk fill and state serialization
 template <typename T> struct is_xoshiro_cached : std::false_type {};
-template <> struct is_xoshiro_cached<prng::XoshiroSIMD> : std::true_type {};
+template <> struct is_xoshiro_cached<simdrng::XoshiroSIMD> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <> struct is_xoshiro_cached<prng::XoshiroNative> : std::true_type {};
+template <> struct is_xoshiro_cached<simdrng::XoshiroNative> : std::true_type {};
 #endif
 
 template <typename T> struct is_chacha : std::false_type {};
-template <std::uint8_t R> struct is_chacha<prng::ChaChaSIMD<R>> : std::true_type {};
+template <std::uint8_t R> struct is_chacha<simdrng::ChaChaSIMD<R>> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-template <std::uint8_t R> struct is_chacha<prng::ChaChaNative<R>> : std::true_type {};
+template <std::uint8_t R> struct is_chacha<simdrng::ChaChaNative<R>> : std::true_type {};
 #endif
 
 template <typename T> struct is_philox : std::false_type {};
 template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
-struct is_philox<prng::PhiloxSIMD<N, W, R>> : std::true_type {};
+struct is_philox<simdrng::PhiloxSIMD<N, W, R>> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 template <std::uint8_t N, std::uint8_t W, std::uint8_t R>
-struct is_philox<prng::PhiloxNative<N, W, R>> : std::true_type {};
+struct is_philox<simdrng::PhiloxNative<N, W, R>> : std::true_type {};
 #endif
 
 // ---------------------------------------------------------------------------
@@ -270,27 +277,27 @@ private:
 // ---------------------------------------------------------------------------
 // State serialization: SplitMix
 template <>
-nb::dict PyBitGenerator<prng::SplitMix>::get_state() const {
+nb::dict PyBitGenerator<simdrng::SplitMix>::get_state() const {
   nb::dict d;
   d["s"] = rng.getState();
   return d;
 }
 template <>
-void PyBitGenerator<prng::SplitMix>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::SplitMix>::set_state(nb::dict d) {
   rng.setState(nb::cast<uint64_t>(d["s"]));
 }
 
 // ---------------------------------------------------------------------------
 // State serialization: XoshiroScalar
 template <>
-nb::dict PyBitGenerator<prng::XoshiroScalar>::get_state() const {
+nb::dict PyBitGenerator<simdrng::XoshiroScalar>::get_state() const {
   auto s = rng.getState();
   nb::dict d;
   d["s"] = std::vector<uint64_t>(s.begin(), s.end());
   return d;
 }
 template <>
-void PyBitGenerator<prng::XoshiroScalar>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::XoshiroScalar>::set_state(nb::dict d) {
   auto v = nb::cast<std::vector<uint64_t>>(d["s"]);
   std::array<uint64_t, 4> s;
   for (int i = 0; i < 4; ++i) s[i] = v[i];
@@ -328,22 +335,22 @@ void set_xoshiro_cached_state(Rng &rng, nb::dict d) {
 
 // XoshiroSIMD
 template <>
-nb::dict PyBitGenerator<prng::XoshiroSIMD>::get_state() const {
+nb::dict PyBitGenerator<simdrng::XoshiroSIMD>::get_state() const {
   return get_xoshiro_cached_state(rng);
 }
 template <>
-void PyBitGenerator<prng::XoshiroSIMD>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::XoshiroSIMD>::set_state(nb::dict d) {
   set_xoshiro_cached_state(rng, d);
 }
 
 // XoshiroNative
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 template <>
-nb::dict PyBitGenerator<prng::XoshiroNative>::get_state() const {
+nb::dict PyBitGenerator<simdrng::XoshiroNative>::get_state() const {
   return get_xoshiro_cached_state(rng);
 }
 template <>
-void PyBitGenerator<prng::XoshiroNative>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::XoshiroNative>::set_state(nb::dict d) {
   set_xoshiro_cached_state(rng, d);
 }
 #endif
@@ -376,54 +383,54 @@ void set_chacha_state(Rng &rng, nb::dict d) {
 
 // ChaChaSIMD<8>, <12>, <20>
 template <>
-nb::dict PyBitGenerator<prng::ChaChaSIMD<8>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaSIMD<8>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaSIMD<8>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaSIMD<8>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 template <>
-nb::dict PyBitGenerator<prng::ChaChaSIMD<12>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaSIMD<12>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaSIMD<12>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaSIMD<12>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 template <>
-nb::dict PyBitGenerator<prng::ChaChaSIMD<20>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaSIMD<20>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaSIMD<20>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaSIMD<20>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 
 // ChaChaNative<8>, <12>, <20>
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 template <>
-nb::dict PyBitGenerator<prng::ChaChaNative<8>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaNative<8>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaNative<8>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaNative<8>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 template <>
-nb::dict PyBitGenerator<prng::ChaChaNative<12>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaNative<12>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaNative<12>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaNative<12>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 template <>
-nb::dict PyBitGenerator<prng::ChaChaNative<20>>::get_state() const {
+nb::dict PyBitGenerator<simdrng::ChaChaNative<20>>::get_state() const {
   return get_chacha_state(rng);
 }
 template <>
-void PyBitGenerator<prng::ChaChaNative<20>>::set_state(nb::dict d) {
+void PyBitGenerator<simdrng::ChaChaNative<20>>::set_state(nb::dict d) {
   set_chacha_state(rng, d);
 }
 #endif
@@ -462,10 +469,10 @@ void set_philox_state(Rng &rng, nb::dict d) {
 }
 
 // Philox SIMD state specializations for all four NxW combos
-using Philox4x32SIMD_t = prng::PhiloxSIMD<4, 32, 10>;
-using Philox2x32SIMD_t = prng::PhiloxSIMD<2, 32, 10>;
-using Philox4x64SIMD_t = prng::PhiloxSIMD<4, 64, 10>;
-using Philox2x64SIMD_t = prng::PhiloxSIMD<2, 64, 10>;
+using Philox4x32SIMD_t = simdrng::PhiloxSIMD<4, 32, 10>;
+using Philox2x32SIMD_t = simdrng::PhiloxSIMD<2, 32, 10>;
+using Philox4x64SIMD_t = simdrng::PhiloxSIMD<4, 64, 10>;
+using Philox2x64SIMD_t = simdrng::PhiloxSIMD<2, 64, 10>;
 
 template <> nb::dict PyBitGenerator<Philox4x32SIMD_t>::get_state() const { return get_philox_state(rng); }
 template <> void PyBitGenerator<Philox4x32SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
@@ -477,10 +484,10 @@ template <> nb::dict PyBitGenerator<Philox2x64SIMD_t>::get_state() const { retur
 template <> void PyBitGenerator<Philox2x64SIMD_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-using Philox4x32Native_t = prng::PhiloxNative<4, 32, 10>;
-using Philox2x32Native_t = prng::PhiloxNative<2, 32, 10>;
-using Philox4x64Native_t = prng::PhiloxNative<4, 64, 10>;
-using Philox2x64Native_t = prng::PhiloxNative<2, 64, 10>;
+using Philox4x32Native_t = simdrng::PhiloxNative<4, 32, 10>;
+using Philox2x32Native_t = simdrng::PhiloxNative<2, 32, 10>;
+using Philox4x64Native_t = simdrng::PhiloxNative<4, 64, 10>;
+using Philox2x64Native_t = simdrng::PhiloxNative<2, 64, 10>;
 
 template <> nb::dict PyBitGenerator<Philox4x32Native_t>::get_state() const { return get_philox_state(rng); }
 template <> void PyBitGenerator<Philox4x32Native_t>::set_state(nb::dict d) { set_philox_state(rng, d); }
@@ -512,12 +519,12 @@ void register_base(Class &cls) {
 template <typename Rng>
 struct has_jump : std::false_type {};
 template <>
-struct has_jump<prng::XoshiroScalar> : std::true_type {};
+struct has_jump<simdrng::XoshiroScalar> : std::true_type {};
 template <>
-struct has_jump<prng::XoshiroSIMD> : std::true_type {};
+struct has_jump<simdrng::XoshiroSIMD> : std::true_type {};
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
 template <>
-struct has_jump<prng::XoshiroNative> : std::true_type {};
+struct has_jump<simdrng::XoshiroNative> : std::true_type {};
 #endif
 
 template <typename Rng, typename Class>
@@ -534,98 +541,98 @@ void register_jump(Class &cls) {
 // ---------------------------------------------------------------------------
 // Python module
 NB_MODULE(simdrng_ext, m) {
-  using PySplitMix = PyBitGenerator<prng::SplitMix>;
+  using PySplitMix = PyBitGenerator<simdrng::SplitMix>;
   auto sm = nb::class_<PySplitMix>(m, "_SplitMix")
                 .def(nb::init<uint64_t>(), "seed"_a);
-  register_base<prng::SplitMix>(sm);
+  register_base<simdrng::SplitMix>(sm);
 
-  using PyXoshiro = PyBitGenerator<prng::XoshiroScalar>;
+  using PyXoshiro = PyBitGenerator<simdrng::XoshiroScalar>;
   auto xo = nb::class_<PyXoshiro>(m, "_Xoshiro")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                      "thread"_a, "cluster"_a);
-  register_base<prng::XoshiroScalar>(xo);
-  register_jump<prng::XoshiroScalar>(xo);
+  register_base<simdrng::XoshiroScalar>(xo);
+  register_jump<simdrng::XoshiroScalar>(xo);
 
-  using PyXoshiroSIMD = PyBitGenerator<prng::XoshiroSIMD>;
+  using PyXoshiroSIMD = PyBitGenerator<simdrng::XoshiroSIMD>;
   auto xs = nb::class_<PyXoshiroSIMD>(m, "_XoshiroSIMD")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                      "thread"_a, "cluster"_a);
-  register_base<prng::XoshiroSIMD>(xs);
-  register_jump<prng::XoshiroSIMD>(xs);
+  register_base<simdrng::XoshiroSIMD>(xs);
+  register_jump<simdrng::XoshiroSIMD>(xs);
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-  using PyXoshiroNative = PyBitGenerator<prng::XoshiroNative>;
+  using PyXoshiroNative = PyBitGenerator<simdrng::XoshiroNative>;
   auto xn = nb::class_<PyXoshiroNative>(m, "_XoshiroNative")
                 .def(nb::init<uint64_t>(), "seed"_a)
                 .def(nb::init<uint64_t, uint64_t>(), "seed"_a, "thread"_a)
                 .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                      "thread"_a, "cluster"_a);
-  register_base<prng::XoshiroNative>(xn);
-  register_jump<prng::XoshiroNative>(xn);
+  register_base<simdrng::XoshiroNative>(xn);
+  register_jump<simdrng::XoshiroNative>(xn);
 #endif
 
   // ChaCha SIMD variants — accept both (seed) and (key, counter, nonce)
   using key_t = std::array<uint32_t, 8>;
 
-  using PyChaCha8SIMD = PyBitGenerator<prng::ChaChaSIMD<8>>;
+  using PyChaCha8SIMD = PyBitGenerator<simdrng::ChaChaSIMD<8>>;
   auto c8s = nb::class_<PyChaCha8SIMD>(m, "_ChaCha8SIMD")
                  .def(nb::init<uint64_t>(), "seed"_a)
                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                       "counter"_a, "nonce"_a)
                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                       "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaSIMD<8>>(c8s);
+  register_base<simdrng::ChaChaSIMD<8>>(c8s);
 
-  using PyChaCha12SIMD = PyBitGenerator<prng::ChaChaSIMD<12>>;
+  using PyChaCha12SIMD = PyBitGenerator<simdrng::ChaChaSIMD<12>>;
   auto c12s = nb::class_<PyChaCha12SIMD>(m, "_ChaCha12SIMD")
                   .def(nb::init<uint64_t>(), "seed"_a)
                   .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                        "counter"_a, "nonce"_a)
                   .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                        "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaSIMD<12>>(c12s);
+  register_base<simdrng::ChaChaSIMD<12>>(c12s);
 
-  using PyChaCha20SIMD = PyBitGenerator<prng::ChaChaSIMD<20>>;
+  using PyChaCha20SIMD = PyBitGenerator<simdrng::ChaChaSIMD<20>>;
   auto c20s = nb::class_<PyChaCha20SIMD>(m, "_ChaCha20SIMD")
                   .def(nb::init<uint64_t>(), "seed"_a)
                   .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                        "counter"_a, "nonce"_a)
                   .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                        "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaSIMD<20>>(c20s);
+  register_base<simdrng::ChaChaSIMD<20>>(c20s);
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
   // ChaCha Native variants — accept both (seed) and (key, counter, nonce)
-  using PyChaCha8Native = PyBitGenerator<prng::ChaChaNative<8>>;
+  using PyChaCha8Native = PyBitGenerator<simdrng::ChaChaNative<8>>;
   auto c8n = nb::class_<PyChaCha8Native>(m, "_ChaCha8Native")
                  .def(nb::init<uint64_t>(), "seed"_a)
                  .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                       "counter"_a, "nonce"_a)
                  .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                       "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaNative<8>>(c8n);
+  register_base<simdrng::ChaChaNative<8>>(c8n);
 
-  using PyChaCha12Native = PyBitGenerator<prng::ChaChaNative<12>>;
+  using PyChaCha12Native = PyBitGenerator<simdrng::ChaChaNative<12>>;
   auto c12n = nb::class_<PyChaCha12Native>(m, "_ChaCha12Native")
                   .def(nb::init<uint64_t>(), "seed"_a)
                   .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                        "counter"_a, "nonce"_a)
                   .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                        "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaNative<12>>(c12n);
+  register_base<simdrng::ChaChaNative<12>>(c12n);
 
-  using PyChaCha20Native = PyBitGenerator<prng::ChaChaNative<20>>;
+  using PyChaCha20Native = PyBitGenerator<simdrng::ChaChaNative<20>>;
   auto c20n = nb::class_<PyChaCha20Native>(m, "_ChaCha20Native")
                   .def(nb::init<uint64_t>(), "seed"_a)
                   .def(nb::init<uint64_t, uint64_t, uint64_t>(), "seed"_a,
                        "counter"_a, "nonce"_a)
                   .def(nb::init<key_t, uint64_t, uint64_t>(), "key"_a,
                        "counter"_a, "nonce"_a);
-  register_base<prng::ChaChaNative<20>>(c20n);
+  register_base<simdrng::ChaChaNative<20>>(c20n);
 #endif
 
   // Philox SIMD variants — accept both (seed) and (key, counter)

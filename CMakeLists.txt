@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.29)
 
-project(simdrng VERSION 0.0 LANGUAGES CXX)
+# ---------------------------------------------------------------------------
+# Version. The top-level VERSION file holds the canonical "x.y.z"; project()
+# consumes it, and GenerateVersion.cmake derives a git-aware full string that
+# is baked into include/simdrng/version.hpp.
+# ---------------------------------------------------------------------------
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" SIMDRNG_VERSION_BASE LIMIT_COUNT 1)
+string(STRIP "${SIMDRNG_VERSION_BASE}" SIMDRNG_VERSION_BASE)
+
+project(simdrng VERSION ${SIMDRNG_VERSION_BASE} LANGUAGES CXX)
 
 # if no build type was specified, default to Release
 if (NOT CMAKE_BUILD_TYPE)
@@ -8,54 +16,85 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
 endif ()
 
-set(CPM_DOWNLOAD_VERSION 0.42.0)
-set(XSIMD_DOWNLOAD_VERSION feat/mulhilo)
-set(POET_DOWNLOAD_VERSION b55580fd1f17df500abb8afb16cd4983e66a27ac)
+# ---------------------------------------------------------------------------
+# Options (all SIMDRNG_*-prefixed).
+# ---------------------------------------------------------------------------
+include(CTest)  # defines BUILD_TESTING (default ON)
 
-option(ENABLE_TESTS "Enable tests" ON)
-option(ENABLE_PYTHON "Enable Python bindings" ON)
-option(MARCH_NATIVE "Build benchmarks with -march=native" OFF)
-option(BUILD_EXAMPLES "Build C++ examples under examples/cpp" OFF)
-option(BUILD_DOCS "Build Sphinx/Doxygen documentation" OFF)
-option(ENABLE_CODSPEED "Link the benchmark harness against codspeed-cpp for CodSpeed instrumentation" OFF)
+option(SIMDRNG_WITH_XSIMD "Build the SIMD backends with xsimd (OFF = scalar-only header library)" ON)
+option(SIMDRNG_BUILD_TESTS "Build the Catch2 test suite and benchmarks" ${BUILD_TESTING})
+option(SIMDRNG_BUILD_PYTHON "Build the nanobind Python bindings (requires SIMDRNG_WITH_XSIMD)" OFF)
+option(SIMDRNG_BUILD_EXAMPLES "Build the C++ examples under examples/cpp" OFF)
+option(SIMDRNG_BUILD_DOCS "Build Sphinx/Doxygen documentation" OFF)
+option(SIMDRNG_MARCH_NATIVE "Build benchmarks with -march=native" OFF)
+option(SIMDRNG_ENABLE_CODSPEED "Link the benchmark harness against codspeed-cpp for CodSpeed instrumentation" OFF)
+option(SIMDRNG_DEVEL "Enable development tooling (CPM, warnings helpers, coverage, analysis)" OFF)
 
-if (CPM_SOURCE_CACHE)
-    set(CPM_DOWNLOAD_LOCATION "${CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
-elseif (DEFINED ENV{CPM_SOURCE_CACHE})
-    set(CPM_DOWNLOAD_LOCATION "$ENV{CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
-else ()
-    set(CPM_DOWNLOAD_LOCATION "${CMAKE_BINARY_DIR}/cmake/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
+if (SIMDRNG_BUILD_PYTHON AND NOT SIMDRNG_WITH_XSIMD)
+    message(FATAL_ERROR "SIMDRNG_BUILD_PYTHON requires SIMDRNG_WITH_XSIMD=ON (the Python bindings expose the SIMD generators).")
 endif ()
-if (NOT (EXISTS ${CPM_DOWNLOAD_LOCATION}))
-    message(STATUS "Downloading CPM.cmake to ${CPM_DOWNLOAD_LOCATION}")
-    file(DOWNLOAD
-            https://github.com/TheLartians/CPM.cmake/releases/download/v${CPM_DOWNLOAD_VERSION}/CPM.cmake
-            ${CPM_DOWNLOAD_LOCATION}
+
+# ---------------------------------------------------------------------------
+# Version header (committed; regenerated here and by the pre-commit hook).
+# ---------------------------------------------------------------------------
+include(cmake/GenerateVersion.cmake)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp"
+    @ONLY
+)
+
+# ---------------------------------------------------------------------------
+# Developer helpers / CPM bootstrap. Needed whenever we fetch a dependency
+# (xsimd/poet) or build any dev artifact. A bare scalar install pulls in
+# nothing extra.
+# ---------------------------------------------------------------------------
+if (SIMDRNG_WITH_XSIMD OR SIMDRNG_BUILD_TESTS OR SIMDRNG_BUILD_PYTHON OR SIMDRNG_BUILD_EXAMPLES OR SIMDRNG_DEVEL)
+    include(cmake/dev_helpers.cmake)
+endif ()
+
+# ---------------------------------------------------------------------------
+# Dependencies.
+#   xsimd : SIMD backend (optional).
+#   poet  : compile-time helpers used by the SIMD headers and Python bindings.
+# Pinned by SHA for reproducibility.
+# ---------------------------------------------------------------------------
+set(XSIMD_DOWNLOAD_VERSION 01f17ece3f1687a2b04bf013c39a5c71e368cffb)  # xtensor-stack/xsimd master HEAD (mulhilo merged)
+set(POET_DOWNLOAD_VERSION 7562dbdab569739d526cc3174bea25f618ba74f7)  # DiamonDinoia/poet v0.0.0
+
+if (SIMDRNG_WITH_XSIMD)
+    CPMAddPackage(
+            NAME xsimd
+            GITHUB_REPOSITORY xtensor-stack/xsimd
+            GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
+            GIT_SHALLOW NO
+            GIT_PROGRESS YES
+            EXCLUDE_FROM_ALL YES
     )
 endif ()
-include(${CPM_DOWNLOAD_LOCATION})
 
-CPMAddPackage(
-        NAME xsimd
-        GITHUB_REPOSITORY DiamonDinoia/xsimd
-        GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
-        GIT_SHALLOW NO
-        GIT_PROGRESS YES
-        EXCLUDE_FROM_ALL YES
-)
-
-CPMAddPackage(
-        NAME poet
-        GITHUB_REPOSITORY DiamonDinoia/poet
-        GIT_TAG ${POET_DOWNLOAD_VERSION}
-        GIT_SHALLOW NO
-        GIT_PROGRESS YES
-        EXCLUDE_FROM_ALL YES
-        OPTIONS
-            "POET_BUILD_TESTS OFF"
-            "POET_BUILD_BENCHMARKS OFF"
-            "POET_STRICT_WARNINGS OFF"
-)
+if (SIMDRNG_WITH_XSIMD OR SIMDRNG_BUILD_PYTHON)
+    # poet is header-only (its version.hpp is committed). We fetch sources only
+    # and define the interface target ourselves rather than add_subdirectory'ing
+    # poet: poet's CMakeLists runs a GenerateVersion step that resolves the
+    # source dir to the *consumer* whenever the consumer has its own top-level
+    # VERSION file (which we now do), breaking the configure. DOWNLOAD_ONLY
+    # avoids running poet's CMakeLists entirely.
+    CPMAddPackage(
+            NAME poet
+            GITHUB_REPOSITORY DiamonDinoia/poet
+            GIT_TAG ${POET_DOWNLOAD_VERSION}
+            GIT_SHALLOW NO
+            GIT_PROGRESS YES
+            DOWNLOAD_ONLY YES
+    )
+    if (poet_ADDED AND NOT TARGET poet::poet)
+        add_library(poet INTERFACE)
+        add_library(poet::poet ALIAS poet)
+        target_include_directories(poet INTERFACE $<BUILD_INTERFACE:${poet_SOURCE_DIR}/include>)
+        target_compile_features(poet INTERFACE cxx_std_17)
+    endif ()
+endif ()
 
 include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
@@ -87,100 +126,127 @@ if (NOT SUPPORTED_CXX_STANDARD)
     message(FATAL_ERROR "The compiler does not support C++17 or higher.")
 endif ()
 
-add_library(simdrng STATIC src/xoshiro_simd.cpp)
-add_library(simdrng::simdrng ALIAS simdrng)
-target_include_directories(simdrng PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
-target_link_libraries(simdrng PUBLIC xsimd poet::poet)
-set_target_properties(simdrng PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
-    INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
-    INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
-)
-# Suppress GCC 15 -Wtemplate-body: xsimd template definitions reference
-# SIMD intrinsics that don't exist without a SIMD arch, but these templates
-# are only instantiated in dispatch TUs compiled with the correct -march flags.
-add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
-target_compile_options(simdrng PUBLIC ${TEMPLATE_BODY_FLAGS})
-target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
-target_compile_features(simdrng INTERFACE cxx_std_20)
-
-# Architecture-specific SIMD dispatch variants.
-# Each variant is compiled with flags that enable a specific SIMD level;
-# xsimd::dispatch picks the best available at runtime.
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-    set(PRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
-    if (MSVC)
-        # MSVC has no -march equivalent and doesn't define __SSE2__ even
-        # though x64 is SSE2 baseline; define it explicitly so the dispatch
-        # TUs pick the right template instantiation. MSVC does define
-        # __AVX2__ under /arch:AVX2 and __AVX512F__ under /arch:AVX512.
-        set(PRNG_DISPATCH_FLAGS_x86_64     /D__SSE2__)
-        set(PRNG_DISPATCH_FLAGS_x86_64_v3  /arch:AVX2)
-        set(PRNG_DISPATCH_FLAGS_x86_64_v4  /arch:AVX512)
-    else ()
-        set(PRNG_DISPATCH_FLAGS_x86_64     -march=x86-64   -mtune=generic)
-        set(PRNG_DISPATCH_FLAGS_x86_64_v3  -march=x86-64-v3 -mtune=generic)
-        set(PRNG_DISPATCH_FLAGS_x86_64_v4  -march=x86-64-v4 -mtune=generic)
-    endif ()
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-    set(PRNG_DISPATCH_VARIANTS "neon64")
-    set(PRNG_DISPATCH_FLAGS_neon64 "")  # NEON is baseline on aarch64
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64$")
-    set(PRNG_DISPATCH_VARIANTS "rvv")
-    set(PRNG_DISPATCH_FLAGS_rvv -march=rv64gcv -mrvv-vector-bits=zvl)
+# ---------------------------------------------------------------------------
+# Library target.
+#   With xsimd : a STATIC library carrying the runtime SIMD dispatch TUs.
+#   Without    : a header-only INTERFACE library (scalar generators only).
+# ---------------------------------------------------------------------------
+if (SIMDRNG_WITH_XSIMD)
+    add_library(simdrng STATIC src/xoshiro_simd.cpp)
+    add_library(simdrng::simdrng ALIAS simdrng)
+    target_include_directories(simdrng PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_compile_definitions(simdrng PUBLIC SIMDRNG_WITH_XSIMD=1)
+    # poet is consumed header-only and not part of our export set, so reference
+    # it only in the build tree; installed consumers obtain it via the
+    # find_dependency(poet) call emitted into simdrngConfig.cmake.
+    target_link_libraries(simdrng PUBLIC xsimd $<BUILD_INTERFACE:poet::poet>)
+    set_target_properties(simdrng PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
+        INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
+        INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+    # Suppress GCC 15 -Wtemplate-body: xsimd template definitions reference
+    # SIMD intrinsics that don't exist without a SIMD arch, but these templates
+    # are only instantiated in dispatch TUs compiled with the correct -march flags.
+    add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
+    target_compile_options(simdrng PUBLIC ${TEMPLATE_BODY_FLAGS})
+    target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
+    target_compile_features(simdrng INTERFACE cxx_std_20)
 else ()
-    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    add_library(simdrng INTERFACE)
+    add_library(simdrng::simdrng ALIAS simdrng)
+    target_include_directories(simdrng INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_compile_definitions(simdrng INTERFACE SIMDRNG_WITH_XSIMD=0)
+    target_compile_features(simdrng INTERFACE cxx_std_20)
 endif ()
 
-foreach (PRNG_TYPE IN ITEMS xoshiro chacha philox)
-    foreach (VARIANT IN LISTS PRNG_DISPATCH_VARIANTS)
-        string(REPLACE "-" "_" TARGET_SUFFIX "${VARIANT}")
-        set(SIMD_SOURCE_TARGET "${PRNG_TYPE}_simd_source_${TARGET_SUFFIX}")
+# ---------------------------------------------------------------------------
+# Architecture-specific SIMD dispatch variants (xsimd only).
+# Each variant is compiled with flags that enable a specific SIMD level;
+# xsimd::dispatch picks the best available at runtime.
+# ---------------------------------------------------------------------------
+if (SIMDRNG_WITH_XSIMD)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+        set(SIMDRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
+        if (MSVC)
+            # MSVC has no -march equivalent and doesn't define __SSE2__ even
+            # though x64 is SSE2 baseline; define it explicitly so the dispatch
+            # TUs pick the right template instantiation. MSVC does define
+            # __AVX2__ under /arch:AVX2 and the AVX-512 family under /arch:AVX512.
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64     /D__SSE2__)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3  /arch:AVX2)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4  /arch:AVX512)
+        else ()
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64     -march=x86-64   -mtune=generic)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3  -march=x86-64-v3 -mtune=generic)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4  -march=x86-64-v4 -mtune=generic)
+        endif ()
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        set(SIMDRNG_DISPATCH_VARIANTS "neon64")
+        set(SIMDRNG_DISPATCH_FLAGS_neon64 "")  # NEON is baseline on aarch64
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64$")
+        set(SIMDRNG_DISPATCH_VARIANTS "rvv")
+        set(SIMDRNG_DISPATCH_FLAGS_rvv -march=rv64gcv -mrvv-vector-bits=zvl)
+    else ()
+        message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif ()
 
-        add_library(${SIMD_SOURCE_TARGET} OBJECT src/${PRNG_TYPE}_simd_dispatch.cpp)
-        target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-        target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd poet::poet)
-        target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${PRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
-        set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
-            POSITION_INDEPENDENT_CODE ON
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
-            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
-            INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
-            CXX_VISIBILITY_PRESET hidden
-            VISIBILITY_INLINES_HIDDEN ON
-        )
-        target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
-        target_sources(simdrng PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
+    foreach (SIMDRNG_TYPE IN ITEMS xoshiro chacha philox)
+        foreach (VARIANT IN LISTS SIMDRNG_DISPATCH_VARIANTS)
+            string(REPLACE "-" "_" TARGET_SUFFIX "${VARIANT}")
+            set(SIMD_SOURCE_TARGET "${SIMDRNG_TYPE}_simd_source_${TARGET_SUFFIX}")
+
+            add_library(${SIMD_SOURCE_TARGET} OBJECT src/${SIMDRNG_TYPE}_simd_dispatch.cpp)
+            target_include_directories(${SIMD_SOURCE_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+            target_compile_definitions(${SIMD_SOURCE_TARGET} PRIVATE SIMDRNG_WITH_XSIMD=1)
+            target_link_libraries(${SIMD_SOURCE_TARGET} PRIVATE xsimd poet::poet)
+            target_compile_options(${SIMD_SOURCE_TARGET} PRIVATE ${SIMDRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}})
+            set_target_properties(${SIMD_SOURCE_TARGET} PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+                INTERPROCEDURAL_OPTIMIZATION_RELEASE ${_ipo_ok}
+                INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ${_ipo_ok}
+                INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ${_ipo_ok}
+                CXX_VISIBILITY_PRESET hidden
+                VISIBILITY_INLINES_HIDDEN ON
+            )
+            target_compile_features(${SIMD_SOURCE_TARGET} PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
+            target_sources(simdrng PRIVATE $<TARGET_OBJECTS:${SIMD_SOURCE_TARGET}>)
+        endforeach ()
     endforeach ()
-endforeach ()
+endif ()
 
-if (ENABLE_TESTS)
+if (SIMDRNG_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif ()
 
-if (BUILD_EXAMPLES)
-    if (NOT ENABLE_TESTS)
+if (SIMDRNG_BUILD_EXAMPLES)
+    if (NOT SIMDRNG_BUILD_TESTS)
         enable_testing()
-    endif()
+    endif ()
     add_subdirectory(examples/cpp)
-endif()
+endif ()
 
-if (BUILD_DOCS)
+if (SIMDRNG_BUILD_DOCS)
     add_subdirectory(docs)
-endif()
+endif ()
 
-if (ENABLE_PYTHON)
+if (SIMDRNG_BUILD_PYTHON)
     add_subdirectory(python)
-endif()
+endif ()
 
-# Installation rules (Always available, independent of Python)
+# ---------------------------------------------------------------------------
+# Installation (always available, independent of Python).
+# ---------------------------------------------------------------------------
 install(TARGETS simdrng
         EXPORT simdrngTargets
         ARCHIVE DESTINATION lib
@@ -188,7 +254,7 @@ install(TARGETS simdrng
         RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
 
 install(EXPORT simdrngTargets
         FILE simdrngTargets.cmake

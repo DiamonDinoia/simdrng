@@ -1,7 +1,7 @@
 #include <cstdint>
 #include <random>
 #include <catch2/catch_all.hpp>
-#include <random/xoshiro_scalar.hpp>
+#include <simdrng/xoshiro_scalar.hpp>
 
 #include "xoshiro256plusplus.c"
 
@@ -10,7 +10,7 @@ static constexpr auto tests = 1 << 15;
 TEST_CASE("xoshiro256++", "[xoshiro256++]") {
     const auto seed = std::random_device()();
     INFO("SEED: " << seed);
-    prng::XoshiroScalar rng(seed);
+    simdrng::XoshiroScalar rng(seed);
     s[0] = rng.getState()[0];
     s[1] = rng.getState()[1];
     s[2] = rng.getState()[2];

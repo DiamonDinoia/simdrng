@@ -1,0 +1,67 @@
+---
+Checks: "*,
+        -abseil-*,
+        -altera-*,
+        -android-*,
+        -fuchsia-*,
+        -google-*,
+        -llvm*,
+        -zircon-*,
+        -modernize-use-trailing-return-type,
+        -readability-else-after-return,
+        -readability-static-accessed-through-instance,
+        -readability-avoid-const-params-in-decls,
+        -cppcoreguidelines-non-private-member-variables-in-classes,
+        -misc-non-private-member-variables-in-classes,
+        -misc-no-recursion,
+        -misc-use-anonymous-namespace,
+        -misc-use-internal-linkage,
+        -clang-diagnostic-c2y-extensions,
+        -cppcoreguidelines-avoid-magic-numbers,
+        -readability-magic-numbers,
+        -cppcoreguidelines-avoid-c-arrays,
+        -hicpp-avoid-c-arrays,
+        -modernize-avoid-c-arrays,
+        -readability-identifier-length,
+        -misc-include-cleaner,
+        -cppcoreguidelines-pro-type-vararg,
+        -hicpp-vararg,
+        -bugprone-throwing-static-initialization,
+        -cert-err58-cpp,
+        -cppcoreguidelines-avoid-do-while,
+        -boost-use-ranges,
+        -cppcoreguidelines-pro-bounds-constant-array-index,
+        -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+        -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+        -hicpp-no-array-decay,
+        -cert-err33-c,
+        -hicpp-braces-around-statements,
+        -readability-braces-around-statements,
+        -misc-const-correctness,
+        -cppcoreguidelines-init-variables,
+        -readability-math-missing-parentheses,
+        -readability-redundant-casting,
+        -readability-static-definition-in-anonymous-namespace,
+        -modernize-use-auto,
+        -hicpp-use-auto,
+        -modernize-loop-convert,
+        -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
+        -bugprone-easily-swappable-parameters,
+        -hicpp-signed-bitwise,
+        -cppcoreguidelines-avoid-const-or-ref-data-members,
+        -cppcoreguidelines-pro-type-member-init,
+        -hicpp-member-init,
+        -readability-function-cognitive-complexity,
+        -readability-use-concise-preprocessor-directives,
+        -modernize-use-constraints,
+        -readability-redundant-typename"
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '(include/simdrng|src)/'
+FormatStyle:     none
+
+CheckOptions:
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: 'x|y|z'
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: 'x|y|z'

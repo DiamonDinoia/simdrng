@@ -2,12 +2,12 @@
 
 #include <catch2/catch_all.hpp>
 
-#include <random/chacha.hpp>
-#include <random/chacha_simd.hpp>
+#include <simdrng/chacha.hpp>
+#include <simdrng/chacha_simd.hpp>
 
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-using ChaCha20Reference = prng::ChaCha<20>;
-using ChaCha20SIMD = prng::ChaChaNative<20>;
+using ChaCha20Reference = simdrng::ChaCha<20>;
+using ChaCha20SIMD = simdrng::ChaChaNative<20>;
 
 TEST_CASE("SEED", "[chacha]") {
   static constexpr auto seed_tests = 1 << 14;
@@ -64,14 +64,14 @@ TEST_CASE("SIMD DISPATCH", "[chacha]") {
   INFO("SEED: " << seed);
   std::mt19937 rng32(seed);
   std::mt19937_64 rng64(seed);
-  std::array<prng::ChaChaSIMD<20>::matrix_word, 8> key;
+  std::array<simdrng::ChaChaSIMD<20>::matrix_word, 8> key;
   for (int i = 0; i < 8; i++) {
     key[i] = rng32();
   }
-  prng::ChaChaSIMD<20>::input_word counter = rng64(), nonce = rng64();
+  simdrng::ChaChaSIMD<20>::input_word counter = rng64(), nonce = rng64();
 
-  prng::ChaChaSIMD<20> a(key, counter, nonce);
-  prng::ChaChaSIMD<20> b(key, counter, nonce);
+  simdrng::ChaChaSIMD<20> a(key, counter, nonce);
+  simdrng::ChaChaSIMD<20> b(key, counter, nonce);
   for (int i = 0; i < 1024; ++i) {
     REQUIRE(a() == b());
   }

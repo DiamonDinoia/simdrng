@@ -64,7 +64,7 @@ jobs:
           esac
 
       - name: Configure
-        # MARCH_NATIVE=OFF so binaries don't use instructions unavailable under
+        # SIMDRNG_MARCH_NATIVE=OFF so binaries don't use instructions unavailable under
         # SDE's emulated CPU (e.g. AVX2 on a -p4p run).
         run: cmake --preset release -DENABLE_PYTHON=OFF -DMARCH_NATIVE=OFF
              -DCMAKE_CROSSCOMPILING_EMULATOR="${{ steps.flags.outputs.emulator }}"
@@ -82,7 +82,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Linux ARM: native NEON. SVE would require a library-side SVE dispatch
-  # variant (CMakeLists.txt PRNG_DISPATCH_VARIANTS currently only lists
+  # variant (CMakeLists.txt SIMDRNG_DISPATCH_VARIANTS currently only lists
   # neon64 on aarch64); covered in a follow-up.
   # ---------------------------------------------------------------------------
   linux-arm:

@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "simdrng"
-version = "0.0.0"
+version = "0.0.1"
 description = "Vectorized random number generators (Xoshiro / SplitMix / ChaCha / Philox) with a numpy.random.Generator-compatible Python API"
 authors = [{ name = "Marco Barbone", email = "mbarbone@flatironinstitute.org" }]
 license = "BSD-3-Clause-Attribution"
@@ -21,7 +21,7 @@ cmake.build-type = "Release"
 cmake.source-dir = ".."
 build-dir = "build/{wheel_tag}"
 cmake.targets = ["simdrng_ext"]
-cmake.define = {"ENABLE_PYTHON" = "ON"}
+cmake.define = {"SIMDRNG_BUILD_PYTHON" = "ON"}
 wheel.py-api = "cp312"
 wheel.packages = ["simdrng"]
 wheel.exclude = ["simdrng/tests", "simdrng/examples", "simdrng/benchmarks"]

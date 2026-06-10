@@ -32,12 +32,12 @@ Each generator takes optional ``thread_id`` and ``cluster_id`` parameters that
 produce independent streams per thread and per node:
 
 ```cpp
-#include <random/xoshiro.hpp>
+#include <simdrng/xoshiro.hpp>
 
-prng::Xoshiro rng(42, 1, 2);                     // seed, thread, cluster
-prng::Xoshiro rng(42, std::this_thread::get_id());
-prng::Xoshiro rng(42, omp_get_thread_num());     // OpenMP
-prng::Xoshiro rng(42, omp_get_thread_num(), MPI_rank);  // MPI + OpenMP
+simdrng::Xoshiro rng(42, 1, 2);                     // seed, thread, cluster
+simdrng::Xoshiro rng(42, std::this_thread::get_id());
+simdrng::Xoshiro rng(42, omp_get_thread_num());     // OpenMP
+simdrng::Xoshiro rng(42, omp_get_thread_num(), MPI_rank);  // MPI + OpenMP
 ```
 
 See [`examples/cpp/threaded_openmp.cpp`](examples/cpp/threaded_openmp.cpp).
@@ -54,16 +54,32 @@ ctest --preset test
 
 CMake options:
 
-| Option              | Default | Purpose                                |
-|---------------------|---------|----------------------------------------|
-| `ENABLE_TESTS`      | ON      | Build Catch2 tests and benchmarks      |
-| `ENABLE_PYTHON`     | ON      | Build nanobind Python extension        |
-| `BUILD_EXAMPLES`    | OFF     | Build C++ examples under `examples/cpp`|
-| `BUILD_DOCS`        | OFF     | Generate Sphinx/Doxygen docs           |
-| `MARCH_NATIVE`      | OFF     | Compile benchmarks with `-march=native`|
-| `ENABLE_CODSPEED`   | OFF     | Link codspeed-cpp into the bench harness|
+| Option                   | Default | Purpose                                              |
+|--------------------------|---------|------------------------------------------------------|
+| `SIMDRNG_WITH_XSIMD`     | ON      | Build the SIMD backends with xsimd (OFF = scalar-only header library) |
+| `SIMDRNG_BUILD_TESTS`    | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`) |
+| `SIMDRNG_BUILD_PYTHON`   | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`) |
+| `SIMDRNG_BUILD_EXAMPLES` | OFF     | Build C++ examples under `examples/cpp`              |
+| `SIMDRNG_BUILD_DOCS`     | OFF     | Generate Sphinx/Doxygen docs                         |
+| `SIMDRNG_MARCH_NATIVE`   | OFF     | Compile benchmarks with `-march=native`              |
+| `SIMDRNG_ENABLE_CODSPEED`| OFF     | Link codspeed-cpp into the bench harness             |
 
-Consuming from another CMake project:
+With `SIMDRNG_WITH_XSIMD=OFF` the library is header-only and depends on nothing —
+only the scalar generators are built and `simdrng::Xoshiro` aliases the scalar
+implementation.
+
+Consuming from another CMake project — install and `find_package`:
+
+```cmake
+find_package(simdrng CONFIG REQUIRED)
+target_link_libraries(my_target PRIVATE simdrng::simdrng)
+```
+
+The installed package config pulls in its dependencies (`xsimd`, `poet`) via
+`find_dependency` automatically — but only when built with xsimd; a scalar-only
+install requires no dependencies.
+
+Or vendor it directly with FetchContent:
 
 ```cmake
 include(FetchContent)
@@ -73,6 +89,25 @@ FetchContent_Declare(simdrng
 FetchContent_MakeAvailable(simdrng)
 target_link_libraries(my_target PRIVATE simdrng::simdrng)
 ```
+
+### Single header
+
+Two amalgamated headers are published to the
+[`single-header`](https://github.com/DiamonDinoia/simdrng/tree/single-header)
+branch:
+
+- **`simdrng-scalar.hpp`** — fully self-contained, scalar generators only. No
+  xsimd, no poet, no include path needed.
+- **`simdrng.hpp`** — SIMD-capable. poet is inlined; xsimd is kept as an external
+  `<xsimd/...>` include, so compile with the xsimd headers available. The
+  compile-time-arch `*Native` generators (`XoshiroNative`, `Philox4x64Native`, …)
+  work header-only; the runtime-dispatch types (`XoshiroSIMD`, `Philox*SIMD`, and
+  the default `simdrng::Xoshiro` alias) require linking the compiled library and
+  are not available from the single header alone.
+
+Ready-to-run [Compiler Explorer links](https://github.com/DiamonDinoia/simdrng/tree/godbolt-links)
+(the SIMD one uses Compiler Explorer's vendored xsimd library) are published to
+the `godbolt-links` branch.
 
 ## Examples
 

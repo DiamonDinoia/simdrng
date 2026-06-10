@@ -1,9 +1,9 @@
 // Philox is a counter-based PRNG: same key + same counter => same output.
 #include <iostream>
-#include <random/philox_simd.hpp>
+#include <simdrng/philox_simd.hpp>
 
 int main() {
-  using Rng = prng::PhiloxSIMD<4, 64, 10>;
+  using Rng = simdrng::PhiloxSIMD<4, 64, 10>;
   Rng a(42u);
   Rng b(42u);
 

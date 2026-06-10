@@ -4,12 +4,12 @@
 #include <catch2/catch_all.hpp>
 #include <monocypher.h>
 
-#include <random/chacha.hpp>
+#include <simdrng/chacha.hpp>
 
 static constexpr auto tests = 1 << 15;
 
 TEST_CASE("ChaChaScalar", "[chacha]") {
-    using ChaCha20 = prng::ChaCha<20>;
+    using ChaCha20 = simdrng::ChaCha<20>;
 
     auto seed = std::random_device{}();
     INFO("SEED: " << seed);

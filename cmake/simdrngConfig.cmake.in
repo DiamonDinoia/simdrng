@@ -1,6 +1,13 @@
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyMacro)
-find_dependency(xsimd CONFIG REQUIRED)
+# Whether this build of simdrng was compiled against xsimd. A scalar-only build
+# (SIMDRNG_WITH_XSIMD=OFF) is header-only and pulls in no dependencies.
+set(SIMDRNG_WITH_XSIMD @SIMDRNG_WITH_XSIMD@)
+
+if (SIMDRNG_WITH_XSIMD)
+    include(CMakeFindDependencyMacro)
+    find_dependency(xsimd CONFIG REQUIRED)
+    find_dependency(poet CONFIG REQUIRED)
+endif ()
 
 include("${CMAKE_CURRENT_LIST_DIR}/simdrngTargets.cmake")

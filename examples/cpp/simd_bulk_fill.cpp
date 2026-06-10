@@ -2,11 +2,11 @@
 #include <chrono>
 #include <iostream>
 #include <vector>
-#include <random/xoshiro_simd.hpp>
+#include <simdrng/xoshiro_simd.hpp>
 
 int main() {
   constexpr std::size_t N = 1 << 22;
-  prng::XoshiroSIMD rng(1234u);
+  simdrng::XoshiroSIMD rng(1234u);
 
   std::vector<double> out(N);
   const auto t0 = std::chrono::steady_clock::now();

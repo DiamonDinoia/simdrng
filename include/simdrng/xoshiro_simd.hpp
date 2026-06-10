@@ -22,6 +22,8 @@ Vigna.
 
 #pragma once
 
+#if SIMDRNG_WITH_XSIMD
+
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -32,7 +34,7 @@ Vigna.
 #include "macros.hpp"
 #include "xoshiro_scalar.hpp"
 
-namespace prng {
+namespace simdrng {
 
 class XoshiroSIMD;
 
@@ -57,7 +59,7 @@ template <class Arch> struct XoshiroState {
   /**
    * Seed the SIMD state from a scalar seed, with optional thread and cluster offsets.
    */
-  PRNG_ALWAYS_INLINE constexpr void seed(result_type seed_val, result_type thread_id = 0,
+  SIMDRNG_ALWAYS_INLINE constexpr void seed(result_type seed_val, result_type thread_id = 0,
                                           result_type cluster_id = 0) noexcept {
     XoshiroScalar rng{seed_val};
     std::array<std::array<result_type, SIMD_WIDTH>, RNG_WIDTH> states{};
@@ -78,7 +80,7 @@ template <class Arch> struct XoshiroState {
     }
   }
 
-  PRNG_ALWAYS_INLINE constexpr simd_type next() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr simd_type next() noexcept {
     const auto result = xsimd::rotl<23>(s[0] + s[3]) + s[0];
     const auto t = xsimd::bitwise_lshift<17>(s[1]);
 
@@ -95,7 +97,7 @@ template <class Arch> struct XoshiroState {
     return result;
   }
 
-  PRNG_ALWAYS_INLINE constexpr void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
     poet::static_for<0, CACHE_SIZE / SIMD_WIDTH>([&](auto I) {
       next().store_aligned(cache.data() + I * SIMD_WIDTH);
     });
@@ -104,7 +106,7 @@ template <class Arch> struct XoshiroState {
   /**
    * Jump function. Equivalent to 2^128 calls to next().
    */
-  PRNG_ALWAYS_INLINE constexpr void jump() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr void jump() noexcept {
     constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
     simd_type s0(0), s1(0), s2(0), s3(0);
     for (const auto i : JUMP)
@@ -126,7 +128,7 @@ template <class Arch> struct XoshiroState {
   /**
    * Mid-jump function. Equivalent to 2^160 calls to next().
    */
-  PRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
     constexpr result_type MID_JUMP[] = {0xc04b4f9c5d26c200, 0x69e6e6e431a2d40b, 0x4823b45b89dc689c,
                                          0xf567382197055bf0};
     simd_type s0(0), s1(0), s2(0), s3(0);
@@ -149,7 +151,7 @@ template <class Arch> struct XoshiroState {
   /**
    * Long-jump function. Equivalent to 2^192 calls to next().
    */
-  PRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
     constexpr result_type LONG_JUMP[] = {0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241,
                                           0x39109bb02acbe635};
     simd_type s0(0), s1(0), s2(0), s3(0);
@@ -169,7 +171,7 @@ template <class Arch> struct XoshiroState {
     s[3] = s3;
   }
 
-  PRNG_ALWAYS_INLINE constexpr std::array<result_type, RNG_WIDTH> getState(const std::size_t index) const noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr std::array<result_type, RNG_WIDTH> getState(const std::size_t index) const noexcept {
     std::array<result_type, RNG_WIDTH> state{};
     poet::static_for<0, RNG_WIDTH>([&](auto I) {
       state[I] = s[I].get(index);
@@ -239,20 +241,20 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
   };
 }
 
-#if PRNG_ARCH_X86_64
-extern template PRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
-extern template PRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
-extern template PRNG_EXPORT XoshiroSIMDInitResult
-XoshiroSIMDInitFunctor::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
-#elif PRNG_ARCH_AARCH64
-extern template PRNG_EXPORT XoshiroSIMDInitResult
+#if SIMDRNG_ARCH_X86_64
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
+XoshiroSIMDInitFunctor::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
+#elif SIMDRNG_ARCH_AARCH64
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
 #  if XSIMD_WITH_SVE
-extern template PRNG_EXPORT XoshiroSIMDInitResult
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::sve>(xsimd::sve) const noexcept;
 #  endif
-#elif PRNG_ARCH_RISCV64
-extern template PRNG_EXPORT XoshiroSIMDInitResult
+#elif SIMDRNG_ARCH_RISCV64
+extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::detail::rvv<128>>(xsimd::detail::rvv<128>) const noexcept;
 #endif
 
@@ -269,35 +271,35 @@ class XoshiroNative {
 
 public:
   using result_type = std::uint64_t;
-  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto stateSize() noexcept { return State::RNG_WIDTH; }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto stateSize() noexcept { return State::RNG_WIDTH; }
 
-  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed) noexcept { m_state.seed(seed); }
-  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id) noexcept {
+  SIMDRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed) noexcept { m_state.seed(seed); }
+  SIMDRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id) noexcept {
     m_state.seed(seed, thread_id);
   }
-  PRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id,
+  SIMDRNG_ALWAYS_INLINE explicit XoshiroNative(const result_type seed, const result_type thread_id,
                                             const result_type cluster_id) noexcept {
     m_state.seed(seed, thread_id, cluster_id);
   }
 
-  PRNG_ALWAYS_INLINE result_type operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
       m_state.populate_cache(m_cache);
     }
     return m_cache[m_index++];
   }
 
-  PRNG_ALWAYS_INLINE double uniform() noexcept {
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
-  PRNG_ALWAYS_INLINE auto getState(const std::size_t index) const noexcept { return m_state.getState(index); }
+  SIMDRNG_ALWAYS_INLINE auto getState(const std::size_t index) const noexcept { return m_state.getState(index); }
 
-  PRNG_ALWAYS_INLINE void jump() noexcept { m_state.jump(); }
-  PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_state.mid_jump(); }
-  PRNG_ALWAYS_INLINE void long_jump() noexcept { m_state.long_jump(); }
+  SIMDRNG_ALWAYS_INLINE void jump() noexcept { m_state.jump(); }
+  SIMDRNG_ALWAYS_INLINE void mid_jump() noexcept { m_state.mid_jump(); }
+  SIMDRNG_ALWAYS_INLINE void long_jump() noexcept { m_state.long_jump(); }
 
   void get_flat_state(result_type *out) const noexcept { m_state.get_flat_state(out); }
   void set_flat_state(const result_type *in) noexcept { m_state.set_flat_state(in); }
@@ -322,25 +324,25 @@ private:
 class XoshiroSIMD {
 public:
   using result_type = std::uint64_t;
-  static constexpr PRNG_ALWAYS_INLINE result_type(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
-  static constexpr PRNG_ALWAYS_INLINE result_type(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE result_type(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE result_type(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
-  PRNG_EXPORT explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
+  SIMDRNG_EXPORT explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
 
-  PRNG_ALWAYS_INLINE result_type operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
       m_populate_cache(m_state.data, m_cache);
     }
     return m_cache[m_index++];
   }
 
-  PRNG_ALWAYS_INLINE double uniform() noexcept {
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
-  PRNG_ALWAYS_INLINE void jump() noexcept { m_jump(m_state.data); }
-  PRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
-  PRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
+  SIMDRNG_ALWAYS_INLINE void jump() noexcept { m_jump(m_state.data); }
+  SIMDRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
+  SIMDRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
 
   void get_flat_state(result_type *out) const noexcept { m_get_state(m_state.data, out); }
   void set_flat_state(const result_type *in) noexcept { m_set_state(m_state.data, in); }
@@ -362,7 +364,7 @@ protected:
   // Raw byte storage for the arch-specific XoshiroState.
   // Typed union is not viable: xsimd batch types have different sizeof
   // across TUs compiled with different -march flags (ODR divergence).
-  // Max is avx512f: 4 × sizeof(__m512i) = 4 × 64 = 256 bytes, align 64.
+  // Max is avx512bw: 4 × sizeof(__m512i) = 4 × 64 = 256 bytes, align 64.
   struct StateStorage {
     static constexpr std::size_t SIZE = 256;
     static constexpr std::size_t ALIGN = 64;
@@ -381,4 +383,5 @@ protected:
   std::uint8_t m_index{0};
 };
 
-} // namespace prng
+} // namespace simdrng
+#endif // SIMDRNG_WITH_XSIMD

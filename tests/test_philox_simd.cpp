@@ -2,20 +2,20 @@
 
 #include <catch2/catch_all.hpp>
 
-#include <random/philox.hpp>
-#include <random/philox_simd.hpp>
+#include <simdrng/philox.hpp>
+#include <simdrng/philox_simd.hpp>
 
 // Type aliases to avoid comma issues in Catch2 TEMPLATE_TEST_CASE macros
 #ifndef XSIMD_NO_SUPPORTED_ARCHITECTURE
-using Native4x32 = prng::PhiloxNative<4, 32, 10>;
-using Native2x32 = prng::PhiloxNative<2, 32, 10>;
-using Native4x64 = prng::PhiloxNative<4, 64, 10>;
-using Native2x64 = prng::PhiloxNative<2, 64, 10>;
+using Native4x32 = simdrng::PhiloxNative<4, 32, 10>;
+using Native2x32 = simdrng::PhiloxNative<2, 32, 10>;
+using Native4x64 = simdrng::PhiloxNative<4, 64, 10>;
+using Native2x64 = simdrng::PhiloxNative<2, 64, 10>;
 
-using Scalar4x32 = prng::Philox<4, 32, 10>;
-using Scalar2x32 = prng::Philox<2, 32, 10>;
-using Scalar4x64 = prng::Philox<4, 64, 10>;
-using Scalar2x64 = prng::Philox<2, 64, 10>;
+using Scalar4x32 = simdrng::Philox<4, 32, 10>;
+using Scalar2x32 = simdrng::Philox<2, 32, 10>;
+using Scalar4x64 = simdrng::Philox<4, 64, 10>;
+using Scalar2x64 = simdrng::Philox<2, 64, 10>;
 
 using Pair4x32 = std::pair<Native4x32, Scalar4x32>;
 using Pair2x32 = std::pair<Native2x32, Scalar2x32>;
@@ -85,10 +85,10 @@ TEMPLATE_TEST_CASE("Philox SIMD counter overflow", "[philox]",
 #endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 // Dispatch class type aliases
-using SIMD4x32 = prng::PhiloxSIMD<4, 32, 10>;
-using SIMD2x32 = prng::PhiloxSIMD<2, 32, 10>;
-using SIMD4x64 = prng::PhiloxSIMD<4, 64, 10>;
-using SIMD2x64 = prng::PhiloxSIMD<2, 64, 10>;
+using SIMD4x32 = simdrng::PhiloxSIMD<4, 32, 10>;
+using SIMD2x32 = simdrng::PhiloxSIMD<2, 32, 10>;
+using SIMD4x64 = simdrng::PhiloxSIMD<4, 64, 10>;
+using SIMD2x64 = simdrng::PhiloxSIMD<2, 64, 10>;
 
 // Test dispatch-based class: two instances with same seed produce same output
 TEMPLATE_TEST_CASE("Philox SIMD dispatch consistency", "[philox]",

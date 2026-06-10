@@ -1,11 +1,11 @@
 // Minimal scalar Xoshiro256++ usage: raw uint64, uniform(), and C++ <random> interop.
 #include <iostream>
 #include <random>
-#include <random/xoshiro.hpp>
+#include <simdrng/xoshiro.hpp>
 
 int main() {
   const auto seed = 42u;
-  prng::Xoshiro rng(seed);
+  simdrng::Xoshiro rng(seed);
 
   std::cout << "uint64: " << rng() << '\n';
   std::cout << "uniform double: " << rng.uniform() << '\n';

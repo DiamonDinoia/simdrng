@@ -21,10 +21,10 @@
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "ENABLE_TESTS": "ON",
-        "ENABLE_PYTHON": "OFF",
-        "MARCH_NATIVE": "ON",
-        "BUILD_EXAMPLES": "ON"
+        "SIMDRNG_BUILD_TESTS": "ON",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "ON",
+        "SIMDRNG_BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -33,9 +33,9 @@
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "ENABLE_TESTS": "ON",
-        "ENABLE_PYTHON": "OFF",
-        "BUILD_EXAMPLES": "ON"
+        "SIMDRNG_BUILD_TESTS": "ON",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -43,8 +43,8 @@
       "displayName": "Python Bindings",
       "inherits": "release",
       "cacheVariables": {
-        "ENABLE_PYTHON": "ON",
-        "BUILD_EXAMPLES": "OFF"
+        "SIMDRNG_BUILD_PYTHON": "ON",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF"
       }
     },
     {
@@ -53,9 +53,9 @@
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "ENABLE_TESTS": "OFF",
-        "ENABLE_PYTHON": "OFF",
-        "BUILD_DOCS": "ON"
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_BUILD_DOCS": "ON"
       }
     }
   ],

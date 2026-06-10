@@ -25,33 +25,33 @@ Ported to C++ by Marco Barbone. Original implementation by Guy Steele.
 
 #include "macros.hpp"
 
-namespace prng {
+namespace simdrng {
 
 class SplitMix {
 public:
-  PRNG_ALWAYS_INLINE constexpr explicit SplitMix(const std::uint64_t state) noexcept : m_state(state) {}
+  SIMDRNG_ALWAYS_INLINE constexpr explicit SplitMix(const std::uint64_t state) noexcept : m_state(state) {}
 
-  PRNG_ALWAYS_INLINE constexpr std::uint64_t operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr std::uint64_t operator()() noexcept {
     std::uint64_t z = (m_state += 0x9e3779b97f4a7c15);
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
     z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
     return z ^ (z >> 31);
   }
 
-  static constexpr PRNG_ALWAYS_INLINE std::uint64_t(min)() noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE std::uint64_t(min)() noexcept {
     return std::numeric_limits<std::uint64_t>::lowest();
   }
 
-  static constexpr PRNG_ALWAYS_INLINE std::uint64_t(max)() noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE std::uint64_t(max)() noexcept {
     return std::numeric_limits<std::uint64_t>::max();
   }
 
-  PRNG_ALWAYS_INLINE constexpr std::uint64_t getState() const noexcept { return m_state; }
+  SIMDRNG_ALWAYS_INLINE constexpr std::uint64_t getState() const noexcept { return m_state; }
 
-  PRNG_ALWAYS_INLINE constexpr void setState(std::uint64_t state) noexcept { m_state = state; }
+  SIMDRNG_ALWAYS_INLINE constexpr void setState(std::uint64_t state) noexcept { m_state = state; }
 
 private:
   std::uint64_t m_state;
 };
 
-} // namespace prng
+} // namespace simdrng

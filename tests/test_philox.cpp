@@ -2,12 +2,12 @@
 
 #include <catch2/catch_all.hpp>
 
-#include <random/philox.hpp>
+#include <simdrng/philox.hpp>
 
 // Random123 Known Answer Test (KAT) vectors for Philox4x32-10
 // Source: Random123 reference implementation (philox.h, kat_vectors)
 TEST_CASE("Philox4x32-10 reference vectors", "[philox]") {
-  using P = prng::Philox<4, 32, 10>;
+  using P = simdrng::Philox<4, 32, 10>;
   using ctr_t = P::counter_type;
   using key_t = P::key_type;
 
@@ -41,7 +41,7 @@ TEST_CASE("Philox4x32-10 reference vectors", "[philox]") {
 
 // Random123 KAT vectors for Philox2x32-10
 TEST_CASE("Philox2x32-10 reference vectors", "[philox]") {
-  using P = prng::Philox<2, 32, 10>;
+  using P = simdrng::Philox<2, 32, 10>;
   using ctr_t = P::counter_type;
   using key_t = P::key_type;
 
@@ -70,7 +70,7 @@ TEST_CASE("Philox2x32-10 reference vectors", "[philox]") {
 
 // Random123 KAT vectors for Philox4x64-10
 TEST_CASE("Philox4x64-10 reference vectors", "[philox]") {
-  using P = prng::Philox<4, 64, 10>;
+  using P = simdrng::Philox<4, 64, 10>;
   using ctr_t = P::counter_type;
   using key_t = P::key_type;
 
@@ -95,7 +95,7 @@ TEST_CASE("Philox4x64-10 reference vectors", "[philox]") {
 
 // Random123 KAT vectors for Philox2x64-10
 TEST_CASE("Philox2x64-10 reference vectors", "[philox]") {
-  using P = prng::Philox<2, 64, 10>;
+  using P = simdrng::Philox<2, 64, 10>;
   using ctr_t = P::counter_type;
   using key_t = P::key_type;
 
@@ -115,10 +115,10 @@ TEST_CASE("Philox2x64-10 reference vectors", "[philox]") {
 
 // Verify sequential output: calling operator() returns elements from the same block
 TEST_CASE("Philox4x32 sequential output matches block", "[philox]") {
-  prng::Philox4x32 rng({0x12345678, 0x9abcdef0}, {0, 0, 0, 0});
+  simdrng::Philox4x32 rng({0x12345678, 0x9abcdef0}, {0, 0, 0, 0});
   auto r0 = rng();
   auto r1 = rng();
-  prng::Philox4x32 rng2({0x12345678, 0x9abcdef0}, {0, 0, 0, 0});
+  simdrng::Philox4x32 rng2({0x12345678, 0x9abcdef0}, {0, 0, 0, 0});
   rng2();
   auto cache = rng2.result_cache();
   REQUIRE(r0 == cache[0]);
@@ -127,15 +127,15 @@ TEST_CASE("Philox4x32 sequential output matches block", "[philox]") {
 
 // Verify counter increment produces different output
 TEST_CASE("Philox4x32 different counters produce different output", "[philox]") {
-  prng::Philox4x32 rng1({0, 0}, {0, 0, 0, 0});
-  prng::Philox4x32 rng2({0, 0}, {1, 0, 0, 0});
+  simdrng::Philox4x32 rng1({0, 0}, {0, 0, 0, 0});
+  simdrng::Philox4x32 rng2({0, 0}, {1, 0, 0, 0});
   REQUIRE(rng1() != rng2());
 }
 
 // Verify seed constructor produces deterministic output
 TEST_CASE("Philox seed constructor is deterministic", "[philox]") {
-  prng::Philox4x32 a(42);
-  prng::Philox4x32 b(42);
+  simdrng::Philox4x32 a(42);
+  simdrng::Philox4x32 b(42);
   for (int i = 0; i < 100; ++i) {
     REQUIRE(a() == b());
   }
@@ -143,8 +143,8 @@ TEST_CASE("Philox seed constructor is deterministic", "[philox]") {
 
 // Verify long sequence consistency across all four variants
 TEMPLATE_TEST_CASE("Philox deterministic sequence", "[philox]",
-                   prng::Philox4x32, prng::Philox2x32,
-                   prng::Philox4x64, prng::Philox2x64) {
+                   simdrng::Philox4x32, simdrng::Philox2x32,
+                   simdrng::Philox4x64, simdrng::Philox2x64) {
   auto seed = std::random_device{}();
   INFO("SEED: " << seed);
   TestType a(static_cast<uint64_t>(seed));

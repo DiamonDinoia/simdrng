@@ -1,0 +1,58 @@
+name: Compiler Explorer Links
+
+# Generates working Compiler Explorer (godbolt.org) shortlinks for the simdrng
+# single-header demos on every push to main and publishes them to the orphan
+# `godbolt-links` branch. Each link embeds the amalgamated single header; the
+# SIMD link additionally uses Compiler Explorer's vendored xsimd library.
+#
+# NOTE: this talks to the public godbolt.org shortener API and force-pushes an
+# orphan branch; it can only be exercised in CI.
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  godbolt:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tooling
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Fetch poet source (for SIMD-header amalgamation)
+        run: |
+          cmake -S . -B build -G Ninja -DSIMDRNG_BUILD_TESTS=OFF >/dev/null
+          echo "POET_INC=$(grep -m1 'CPM_PACKAGE_poet_SOURCE_DIR' build/CMakeCache.txt | cut -d= -f2)/include" >> "$GITHUB_ENV"
+
+      - name: Generate single headers
+        run: |
+          mkdir -p out
+          python3 tools/amalgamate.py --strip-xsimd --output out/simdrng-scalar.hpp
+          python3 tools/amalgamate.py --extra-root "$POET_INC" --xsimd-default --output out/simdrng.hpp
+
+      - name: Generate shortlinks
+        run: python3 .github/scripts/godbolt_links.py
+
+      - name: Publish to the godbolt-links branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan godbolt-links
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          cp /tmp/godbolt/index.md /tmp/godbolt/links.json .
+          git add -f index.md links.json
+          git commit -m "Update Compiler Explorer links from ${GITHUB_SHA}"
+          git push -f origin godbolt-links

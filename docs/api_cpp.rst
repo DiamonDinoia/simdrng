@@ -11,23 +11,23 @@ The full API tree is auto-generated from Doxygen XML by Exhale:
 Key headers
 -----------
 
-.. doxygenfile:: random/xoshiro.hpp
+.. doxygenfile:: simdrng/xoshiro.hpp
    :project: simdrng
 
-.. doxygenfile:: random/xoshiro_simd.hpp
+.. doxygenfile:: simdrng/xoshiro_simd.hpp
    :project: simdrng
 
-.. doxygenfile:: random/splitmix.hpp
+.. doxygenfile:: simdrng/splitmix.hpp
    :project: simdrng
 
-.. doxygenfile:: random/chacha.hpp
+.. doxygenfile:: simdrng/chacha.hpp
    :project: simdrng
 
-.. doxygenfile:: random/chacha_simd.hpp
+.. doxygenfile:: simdrng/chacha_simd.hpp
    :project: simdrng
 
-.. doxygenfile:: random/philox.hpp
+.. doxygenfile:: simdrng/philox.hpp
    :project: simdrng
 
-.. doxygenfile:: random/philox_simd.hpp
+.. doxygenfile:: simdrng/philox_simd.hpp
    :project: simdrng

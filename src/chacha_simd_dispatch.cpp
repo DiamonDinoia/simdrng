@@ -1,18 +1,18 @@
-#include "random/chacha_simd.hpp"
+#include "simdrng/chacha_simd.hpp"
 
-namespace prng {
+namespace simdrng {
 
 using InitFunctor8 = internal::ChaChaSIMDInitFunctor<8>;
 using InitFunctor12 = internal::ChaChaSIMDInitFunctor<12>;
 using InitFunctor20 = internal::ChaChaSIMDInitFunctor<20>;
 using InitResult = internal::ChaChaSIMDInitResult;
 
-#if PRNG_ARCH_X86_64
+#if SIMDRNG_ARCH_X86_64
 
-#if defined(__AVX512F__)
-template InitResult InitFunctor8::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
-template InitResult InitFunctor12::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
-template InitResult InitFunctor20::operator()<xsimd::avx512f>(xsimd::avx512f) const noexcept;
+#if defined(__AVX512BW__)
+template InitResult InitFunctor8::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
+template InitResult InitFunctor12::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
+template InitResult InitFunctor20::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
 #elif defined(__AVX2__)
 template InitResult InitFunctor8::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
 template InitResult InitFunctor12::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
@@ -25,7 +25,7 @@ template InitResult InitFunctor20::operator()<xsimd::sse2>(xsimd::sse2) const no
 #error "x86_64: no SIMD instruction set enabled"
 #endif
 
-#elif PRNG_ARCH_AARCH64
+#elif SIMDRNG_ARCH_AARCH64
 
 #if XSIMD_WITH_SVE
 template InitResult InitFunctor8::operator()<xsimd::sve>(xsimd::sve) const noexcept;
@@ -39,7 +39,7 @@ template InitResult InitFunctor20::operator()<xsimd::neon64>(xsimd::neon64) cons
 #error "aarch64: no SIMD instruction set detected"
 #endif
 
-#elif PRNG_ARCH_RISCV64
+#elif SIMDRNG_ARCH_RISCV64
 
 #if XSIMD_WITH_RVV
 template InitResult InitFunctor8::operator()<xsimd::rvv>(xsimd::rvv) const noexcept;
@@ -53,4 +53,4 @@ template InitResult InitFunctor20::operator()<xsimd::rvv>(xsimd::rvv) const noex
 #error "Unsupported architecture"
 #endif
 
-} // namespace prng
+} // namespace simdrng

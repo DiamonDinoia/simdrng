@@ -1,12 +1,14 @@
 #pragma once
 
+#if SIMDRNG_WITH_XSIMD
+
 #include <type_traits>
 #include <xsimd/xsimd.hpp>
 
-namespace prng {
+namespace simdrng {
 
 // Dispatch arch list, selected at compile time via the xsimd inheritance hierarchy.
-// x86:     best_arch derives from sse2  -> dispatch across avx512f / avx2 / sse2
+// x86:     best_arch derives from sse2  -> dispatch across avx512bw / avx2 / sse2
 // aarch64: best_arch derives from neon  -> dispatch to neon64
 // riscv64: fallback                     -> dispatch to rvv (128-bit fixed VLEN)
 //
@@ -20,11 +22,17 @@ using rvv128 = xsimd::detail::rvv<128>;
 // and avx512* derive from `common` independently (avx512bw : avx512dq :
 // avx512cd : avx512f : common). So avx512bw is NOT a descendant of sse2 or
 // avx. Check all three roots to cover every x86 ISA variant.
+//
+// The AVX-512 variant targets avx512bw (the x86-64-v4 floor: F+CD+BW+DQ+VL).
+// Compared to plain avx512f this unlocks vpmullq (AVX512DQ, used by Philox
+// mulhilo) and byte/word permutes (AVX512BW, used by ChaCha shuffles).
+// avx512bw derives from avx512f, so the is_base_of_v<avx512f, ...> root check
+// below is still correct.
 using dispatch_arch_list = std::conditional_t<
     std::is_base_of_v<xsimd::sse2, xsimd::best_arch> ||
     std::is_base_of_v<xsimd::avx, xsimd::best_arch> ||
     std::is_base_of_v<xsimd::avx512f, xsimd::best_arch>,
-    xsimd::arch_list<xsimd::avx512f, xsimd::avx2, xsimd::sse2>,
+    xsimd::arch_list<xsimd::avx512bw, xsimd::avx2, xsimd::sse2>,
     std::conditional_t<
         std::is_base_of_v<xsimd::neon, xsimd::best_arch>,
         xsimd::arch_list<xsimd::neon64>,
@@ -32,4 +40,6 @@ using dispatch_arch_list = std::conditional_t<
     >
 >;
 
-} // namespace prng
+} // namespace simdrng
+
+#endif // SIMDRNG_WITH_XSIMD

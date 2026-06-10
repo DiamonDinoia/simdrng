@@ -8,39 +8,49 @@
 
 #include "macros.hpp"
 
-namespace prng {
+namespace simdrng {
 
 namespace internal {
 
+// Per-variant Philox constants, laid out as N/2-wide arrays so the round is a
+// single data-driven loop (see Philox::single_round) rather than an N-specific
+// branch:
+//   MUL  - the per-lane multipliers (one per counter pair).
+//   BUMP - the per-key Weyl increments applied each round.
+//   PERM - the Philox output permutation: output pair j takes its high/low words
+//          from the product of pair PERM[j]. This cross-wiring is what makes the
+//          round a bijection; it is the only part that differs between 2x and 4x.
+// Adding support for another N is purely adding a specialization here; the round
+// code is already generic over N/2.
 template <std::uint8_t N, std::uint8_t W>
 struct PhiloxConstants;
 
 template <>
 struct PhiloxConstants<4, 32> {
-  static constexpr std::uint32_t M0 = 0xD2511F53;
-  static constexpr std::uint32_t M1 = 0xCD9E8D57;
-  static constexpr std::uint32_t W0 = 0x9E3779B9;
-  static constexpr std::uint32_t W1 = 0xBB67AE85;
+  static constexpr std::array<std::uint32_t, 2> MUL = {0xD2511F53, 0xCD9E8D57};
+  static constexpr std::array<std::uint32_t, 2> BUMP = {0x9E3779B9, 0xBB67AE85};
+  static constexpr std::array<std::uint8_t, 2> PERM = {1, 0};
 };
 
 template <>
 struct PhiloxConstants<2, 32> {
-  static constexpr std::uint32_t M0 = 0xD256D193;
-  static constexpr std::uint32_t W0 = 0x9E3779B9;
+  static constexpr std::array<std::uint32_t, 1> MUL = {0xD256D193};
+  static constexpr std::array<std::uint32_t, 1> BUMP = {0x9E3779B9};
+  static constexpr std::array<std::uint8_t, 1> PERM = {0};
 };
 
 template <>
 struct PhiloxConstants<4, 64> {
-  static constexpr std::uint64_t M0 = 0xD2E7470EE14C6C93ULL;
-  static constexpr std::uint64_t M1 = 0xCA5A826395121157ULL;
-  static constexpr std::uint64_t W0 = 0x9E3779B97F4A7C15ULL;
-  static constexpr std::uint64_t W1 = 0xBB67AE8584CAA73BULL;
+  static constexpr std::array<std::uint64_t, 2> MUL = {0xD2E7470EE14C6C93ULL, 0xCA5A826395121157ULL};
+  static constexpr std::array<std::uint64_t, 2> BUMP = {0x9E3779B97F4A7C15ULL, 0xBB67AE8584CAA73BULL};
+  static constexpr std::array<std::uint8_t, 2> PERM = {1, 0};
 };
 
 template <>
 struct PhiloxConstants<2, 64> {
-  static constexpr std::uint64_t M0 = 0xD2B74407B1CE6E93ULL;
-  static constexpr std::uint64_t W0 = 0x9E3779B97F4A7C15ULL;
+  static constexpr std::array<std::uint64_t, 1> MUL = {0xD2B74407B1CE6E93ULL};
+  static constexpr std::array<std::uint64_t, 1> BUMP = {0x9E3779B97F4A7C15ULL};
+  static constexpr std::array<std::uint8_t, 1> PERM = {0};
 };
 
 } // namespace internal
@@ -60,21 +70,21 @@ public:
   static constexpr auto RESULTS_PER_BLOCK = std::uint8_t{N * W / 64};
   using result_block_type = std::array<result_type, RESULTS_PER_BLOCK>;
 
-  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept {
     return (std::numeric_limits<result_type>::min)();
   }
 
-  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept {
     return (std::numeric_limits<result_type>::max)();
   }
 
-  explicit PRNG_ALWAYS_INLINE Philox(result_type seed, result_type counter = 0) noexcept
+  explicit SIMDRNG_ALWAYS_INLINE Philox(result_type seed, result_type counter = 0) noexcept
       : m_counter(counter_from_uint64(counter)), m_key(seed_to_key(seed)) {}
 
-  explicit PRNG_ALWAYS_INLINE Philox(key_type key, counter_type counter) noexcept
+  explicit SIMDRNG_ALWAYS_INLINE Philox(key_type key, counter_type counter) noexcept
       : m_counter(counter), m_key(key) {}
 
-  PRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr result_type operator()() noexcept {
     if (m_result_index >= RESULTS_PER_BLOCK) [[unlikely]] {
       m_result_cache = next_block();
       m_result_index = 0;
@@ -82,7 +92,7 @@ public:
     return m_result_cache[m_result_index++];
   }
 
-  PRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
+  SIMDRNG_ALWAYS_INLINE constexpr double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
@@ -168,7 +178,7 @@ private:
   result_block_type m_result_cache{};
   std::uint8_t m_result_index = RESULTS_PER_BLOCK;
 
-  static constexpr PRNG_ALWAYS_INLINE void mulhilo(word_type a, word_type b,
+  static constexpr SIMDRNG_ALWAYS_INLINE void mulhilo(word_type a, word_type b,
                                                      word_type &hi, word_type &lo) noexcept {
     if constexpr (W == 32) {
       auto product = static_cast<std::uint64_t>(a) * static_cast<std::uint64_t>(b);
@@ -194,42 +204,47 @@ private:
     }
   }
 
-  static constexpr PRNG_ALWAYS_INLINE void single_round(counter_type &ctr, key_type &key) noexcept {
-    if constexpr (N == 4) {
-      word_type hi0, lo0, hi1, lo1;
-      mulhilo(C::M0, ctr[0], hi0, lo0);
-      mulhilo(C::M1, ctr[2], hi1, lo1);
-      ctr = {hi1 ^ ctr[1] ^ key[0], lo1, hi0 ^ ctr[3] ^ key[1], lo0};
-      key[0] += C::W0;
-      key[1] += C::W1;
-    } else {
-      word_type hi, lo;
-      mulhilo(C::M0, ctr[0], hi, lo);
-      ctr = {hi ^ ctr[1] ^ key[0], lo};
-      key[0] += C::W0;
+  static constexpr SIMDRNG_ALWAYS_INLINE void single_round(counter_type &ctr, key_type &key) noexcept {
+    // N/2 is a compile-time constant, so these loops fully unroll; they stay
+    // constexpr and keep this scalar header free of any SIMD/poet dependency.
+    constexpr std::uint8_t PAIRS = N / 2;
+    std::array<word_type, PAIRS> hi{};
+    std::array<word_type, PAIRS> lo{};
+    for (std::uint8_t j = 0; j < PAIRS; ++j) {
+      mulhilo(C::MUL[j], ctr[2 * j], hi[j], lo[j]);
+    }
+    counter_type out{};
+    for (std::uint8_t j = 0; j < PAIRS; ++j) {
+      const auto s = C::PERM[j];
+      out[2 * j] = hi[s] ^ ctr[2 * j + 1] ^ key[j];
+      out[2 * j + 1] = lo[s];
+    }
+    ctr = out;
+    for (std::uint8_t j = 0; j < PAIRS; ++j) {
+      key[j] += C::BUMP[j];
     }
   }
 
-  static constexpr PRNG_ALWAYS_INLINE counter_type philox_rounds(counter_type ctr, key_type key) noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE counter_type philox_rounds(counter_type ctr, key_type key) noexcept {
     for (std::uint8_t i = 0; i < R; ++i) {
       single_round(ctr, key);
     }
     return ctr;
   }
 
-  constexpr PRNG_ALWAYS_INLINE void inc_counter() noexcept {
+  constexpr SIMDRNG_ALWAYS_INLINE void inc_counter() noexcept {
     for (std::uint8_t i = 0; i < N; ++i) {
       if (++m_counter[i] != 0) break;
     }
   }
 
-  static constexpr PRNG_ALWAYS_INLINE void dec_counter(counter_type &ctr) noexcept {
+  static constexpr SIMDRNG_ALWAYS_INLINE void dec_counter(counter_type &ctr) noexcept {
     for (std::uint8_t i = 0; i < N; ++i) {
       if (ctr[i]-- != 0) break;
     }
   }
 
-  PRNG_FLATTEN constexpr PRNG_ALWAYS_INLINE result_block_type next_block() noexcept {
+  SIMDRNG_FLATTEN constexpr SIMDRNG_ALWAYS_INLINE result_block_type next_block() noexcept {
     auto output = philox_rounds(m_counter, m_key);
     inc_counter();
     return std::bit_cast<result_block_type>(output);
@@ -241,4 +256,4 @@ using Philox2x32 = Philox<2, 32, 10>;
 using Philox4x64 = Philox<4, 64, 10>;
 using Philox2x64 = Philox<2, 64, 10>;
 
-} // namespace prng
+} // namespace simdrng

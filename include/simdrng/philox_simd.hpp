@@ -1,5 +1,7 @@
 #pragma once
 
+#if SIMDRNG_WITH_XSIMD
+
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -12,7 +14,7 @@
 #include "macros.hpp"
 #include "philox.hpp"
 
-namespace prng {
+namespace simdrng {
 
 namespace internal {
 
@@ -44,10 +46,10 @@ struct PhiloxState {
   counter_type m_counter;
   key_type m_key;
 
-  explicit PRNG_ALWAYS_INLINE PhiloxState(const key_type &key, const counter_type &counter) noexcept
+  explicit SIMDRNG_ALWAYS_INLINE PhiloxState(const key_type &key, const counter_type &counter) noexcept
       : m_counter(counter), m_key(key) {}
 
-  PRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
+  SIMDRNG_ALWAYS_INLINE void populate_cache(std::array<result_type, CACHE_SIZE> &cache) noexcept {
     auto counter = m_counter;
     poet::static_for<0, BATCHES_PER_CACHE>([&](auto I) {
       gen_block_batch(cache.data() + I.value * SIMD_WIDTH * RESULTS_PER_BLOCK,
@@ -79,7 +81,7 @@ struct PhiloxState {
 private:
   using C = PhiloxConstants<N, W>;
 
-  static PRNG_ALWAYS_INLINE void advance_counter(counter_type &ctr, word_type amount) noexcept {
+  static SIMDRNG_ALWAYS_INLINE void advance_counter(counter_type &ctr, word_type amount) noexcept {
     word_type old = ctr[0];
     ctr[0] += amount;
     if constexpr (N >= 2) {
@@ -91,38 +93,30 @@ private:
     }
   }
 
-  static PRNG_ALWAYS_INLINE void mulhilo_simd(simd_type a, word_type B,
-                                                simd_type &hi, simd_type &lo) noexcept {
-    auto hilo = xsimd::mulhilo(a, simd_type::broadcast(B));
-    hi = hilo.first;
-    lo = hilo.second;
-  }
-
-  static PRNG_ALWAYS_INLINE void simd_single_round(std::array<simd_type, N> &ctr,
+  static SIMDRNG_ALWAYS_INLINE void simd_single_round(std::array<simd_type, N> &ctr,
                                                      key_type &key) noexcept {
-    if constexpr (N == 4) {
-      simd_type hi0, lo0, hi1, lo1;
-      mulhilo_simd(ctr[0], C::M0, hi0, lo0);
-      mulhilo_simd(ctr[2], C::M1, hi1, lo1);
-      auto k0 = simd_type::broadcast(key[0]);
-      auto k1 = simd_type::broadcast(key[1]);
-      ctr[0] = hi1 ^ ctr[1] ^ k0;
-      ctr[1] = lo1;
-      ctr[2] = hi0 ^ ctr[3] ^ k1;
-      ctr[3] = lo0;
-      key[0] += C::W0;
-      key[1] += C::W1;
-    } else {
-      simd_type hi, lo;
-      mulhilo_simd(ctr[0], C::M0, hi, lo);
-      auto k0 = simd_type::broadcast(key[0]);
-      ctr[0] = hi ^ ctr[1] ^ k0;
-      ctr[1] = lo;
-      key[0] += C::W0;
-    }
+    // Data-driven round, generic over N/2 counter pairs (see PhiloxConstants).
+    // poet::static_for unrolls at compile time so the PERM lookups and lane
+    // indices fold away.
+    constexpr std::uint8_t PAIRS = N / 2;
+    std::array<simd_type, PAIRS> hi;
+    std::array<simd_type, PAIRS> lo;
+    poet::static_for<0, PAIRS>([&](auto J) {
+      auto [h, l] = xsimd::mul_hilo(ctr[2 * J], simd_type::broadcast(C::MUL[J]));
+      hi[J] = h;
+      lo[J] = l;
+    });
+    std::array<simd_type, N> out;
+    poet::static_for<0, PAIRS>([&](auto J) {
+      constexpr std::uint8_t S = C::PERM[J];
+      out[2 * J] = hi[S] ^ ctr[2 * J + 1] ^ simd_type::broadcast(key[J]);
+      out[2 * J + 1] = lo[S];
+    });
+    ctr = out;
+    poet::static_for<0, PAIRS>([&](auto J) { key[J] += C::BUMP[J]; });
   }
 
-  static PRNG_ALWAYS_INLINE void init_counter_batch(
+  static SIMDRNG_ALWAYS_INLINE void init_counter_batch(
       std::array<simd_type, N> &ctr_simd,
       const counter_type &counter) noexcept {
     alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> offsets{};
@@ -143,7 +137,7 @@ private:
     });
   }
 
-  static PRNG_ALWAYS_INLINE void store_blocks_to_cache(result_type *cache,
+  static SIMDRNG_ALWAYS_INLINE void store_blocks_to_cache(result_type *cache,
                                      const std::array<simd_type, N> &ctr_simd) noexcept {
     if constexpr (W == 64 && N == SIMD_WIDTH) {
       std::array<simd_type, SIMD_WIDTH> regs;
@@ -174,7 +168,7 @@ private:
     }
   }
 
-  static PRNG_ALWAYS_INLINE void gen_block_batch(result_type *cache,
+  static SIMDRNG_ALWAYS_INLINE void gen_block_batch(result_type *cache,
                                                   const counter_type &counter,
                                                   const key_type &key) noexcept {
     std::array<simd_type, N> ctr_simd;
@@ -255,31 +249,31 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch) cons
 }
 
 // Extern template declarations for all NxW combos and architectures
-#define PRNG_PHILOX_EXTERN_TEMPLATE(N, W, R, Arch)                                                  \
-  extern template PRNG_EXPORT PhiloxSIMDInitResult<N, W>                                            \
+#define SIMDRNG_PHILOX_EXTERN_TEMPLATE(N, W, R, Arch)                                                  \
+  extern template SIMDRNG_EXPORT PhiloxSIMDInitResult<N, W>                                            \
   PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch) const noexcept
 
-#define PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(Arch)                                                 \
-  PRNG_PHILOX_EXTERN_TEMPLATE(4, 32, 10, Arch);                                                    \
-  PRNG_PHILOX_EXTERN_TEMPLATE(2, 32, 10, Arch);                                                    \
-  PRNG_PHILOX_EXTERN_TEMPLATE(4, 64, 10, Arch);                                                    \
-  PRNG_PHILOX_EXTERN_TEMPLATE(2, 64, 10, Arch)
+#define SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(Arch)                                                 \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 32, 10, Arch);                                                    \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(2, 32, 10, Arch);                                                    \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(4, 64, 10, Arch);                                                    \
+  SIMDRNG_PHILOX_EXTERN_TEMPLATE(2, 64, 10, Arch)
 
-#if PRNG_ARCH_X86_64
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::sse2);
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx2);
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx512f);
-#elif PRNG_ARCH_AARCH64
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::neon64);
+#if SIMDRNG_ARCH_X86_64
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::sse2);
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx2);
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::avx512bw);
+#elif SIMDRNG_ARCH_AARCH64
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::neon64);
 #  if XSIMD_WITH_SVE
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::sve);
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::sve);
 #  endif
-#elif PRNG_ARCH_RISCV64
-PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::detail::rvv<128>);
+#elif SIMDRNG_ARCH_RISCV64
+SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(xsimd::detail::rvv<128>);
 #endif
 
-#undef PRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH
-#undef PRNG_PHILOX_EXTERN_TEMPLATE
+#undef SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH
+#undef SIMDRNG_PHILOX_EXTERN_TEMPLATE
 
 } // namespace internal
 
@@ -293,8 +287,8 @@ public:
   using key_type = std::array<word_type, N / 2>;
   static constexpr std::uint16_t CACHE_SIZE = 256;
 
-  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
   static constexpr key_type seed_to_key(result_type seed) noexcept {
     return Philox<N, W, R>::seed_to_key(seed);
@@ -304,10 +298,10 @@ public:
     return Philox<N, W, R>::counter_from_uint64(counter);
   }
 
-  explicit PRNG_ALWAYS_INLINE PhiloxSIMD(result_type seed, result_type counter = 0) noexcept
+  explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(result_type seed, result_type counter = 0) noexcept
       : PhiloxSIMD(seed_to_key(seed), counter_from_uint64(counter)) {}
 
-  explicit PRNG_ALWAYS_INLINE PhiloxSIMD(key_type key, counter_type counter) noexcept {
+  explicit SIMDRNG_ALWAYS_INLINE PhiloxSIMD(key_type key, counter_type counter) noexcept {
     auto result = xsimd::dispatch<dispatch_arch_list>(
         internal::PhiloxSIMDInitFunctor<N, W, R>{m_state.data, key, counter})();
     m_populate_cache = result.populate_cache;
@@ -318,14 +312,14 @@ public:
     m_simd_size = result.simd_size;
   }
 
-  PRNG_ALWAYS_INLINE result_type operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
       m_populate_cache(m_state.data, m_cache);
     }
     return m_cache[m_index++];
   }
 
-  PRNG_ALWAYS_INLINE double uniform() noexcept {
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
@@ -349,7 +343,7 @@ public:
   const std::array<result_type, CACHE_SIZE> &cache() const noexcept { return m_cache; }
   std::array<result_type, CACHE_SIZE> &cache() noexcept { return m_cache; }
 
-  PRNG_ALWAYS_INLINE std::size_t getSIMDSize() const noexcept { return m_simd_size; }
+  SIMDRNG_ALWAYS_INLINE std::size_t getSIMDSize() const noexcept { return m_simd_size; }
 
 private:
   using InitResult = internal::PhiloxSIMDInitResult<N, W>;
@@ -386,8 +380,8 @@ public:
   using key_type = std::array<word_type, N / 2>;
   static constexpr std::uint16_t CACHE_SIZE = 256;
 
-  static constexpr PRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
-  static constexpr PRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(min)() noexcept { return (std::numeric_limits<result_type>::min)(); }
+  static constexpr SIMDRNG_ALWAYS_INLINE auto(max)() noexcept { return (std::numeric_limits<result_type>::max)(); }
 
   explicit PhiloxNative(result_type seed, result_type counter = 0) noexcept
       : PhiloxNative(Philox<N, W, R>::seed_to_key(seed), Philox<N, W, R>::counter_from_uint64(counter)) {}
@@ -395,14 +389,14 @@ public:
   PhiloxNative(key_type key, counter_type counter) noexcept
       : m_state(key, counter) {}
 
-  PRNG_ALWAYS_INLINE result_type operator()() noexcept {
+  SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
       m_state.populate_cache(m_cache);
     }
     return m_cache[m_index++];
   }
 
-  PRNG_ALWAYS_INLINE double uniform() noexcept {
+  SIMDRNG_ALWAYS_INLINE double uniform() noexcept {
     return static_cast<double>(operator()() >> 11) * 0x1.0p-53;
   }
 
@@ -426,7 +420,7 @@ public:
   const std::array<result_type, CACHE_SIZE> &cache() const noexcept { return m_cache; }
   std::array<result_type, CACHE_SIZE> &cache() noexcept { return m_cache; }
 
-  PRNG_ALWAYS_INLINE std::size_t getSIMDSize() const noexcept { return std::size_t{State::SIMD_WIDTH}; }
+  SIMDRNG_ALWAYS_INLINE std::size_t getSIMDSize() const noexcept { return std::size_t{State::SIMD_WIDTH}; }
 
 private:
   using State = internal::PhiloxState<xsimd::best_arch, N, W, R>;
@@ -449,4 +443,5 @@ using Philox4x64Native = PhiloxNative<4, 64, 10>;
 using Philox2x64Native = PhiloxNative<2, 64, 10>;
 #endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
-} // namespace prng
+} // namespace simdrng
+#endif // SIMDRNG_WITH_XSIMD

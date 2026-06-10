@@ -1,6 +1,6 @@
-#include "random/xoshiro_simd.hpp"
+#include "simdrng/xoshiro_simd.hpp"
 
-namespace prng {
+namespace simdrng {
 
 XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id, const result_type cluster_id) noexcept
     : m_cache{}, m_state{}, m_index{0} {
@@ -16,4 +16,4 @@ XoshiroSIMD::XoshiroSIMD(const result_type seed, const result_type thread_id, co
   m_simd_width = result.simd_width;
 }
 
-} // namespace prng
+} // namespace simdrng
