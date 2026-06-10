@@ -72,8 +72,12 @@ jobs:
         uses: Wandalen/wretry.action@v3.8.0
         with:
           action: petarpetrovt/setup-sde@v5.0
+          # sdeVersion is required by setup-sde@v5 (its action.yml uses a
+          # non-standard `defaultValue:` key that GitHub never injects, so an
+          # unset input surfaces as "Please, provide value for option sdeVersion").
           with: |
             environmentVariableName: SDE_PATH
+            sdeVersion: 10.8.0
           attempt_limit: 4
           attempt_delay: 15000
 
