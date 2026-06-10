@@ -18,6 +18,13 @@ sphinx:
 python:
   install:
     - requirements: docs/requirements.txt
+    # Build and install the compiled `simdrng` extension so autodoc can import
+    # it and render the Python API. scikit-build-core (in python/pyproject.toml)
+    # pulls cmake/ninja into the build env and CPM fetches xsimd/poet; RTD's
+    # ubuntu-24.04 image already ships a C++20 gcc. No libpfm4 needed (that is
+    # benchmarks-only).
+    - method: pip
+      path: python
 
 formats:
   - htmlzip
