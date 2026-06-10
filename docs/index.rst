@@ -27,6 +27,12 @@ straight into ``numpy`` and ``scipy``.
    api_cpp
    api_python
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Reference
+
+   references
+
 Indices
 -------
 

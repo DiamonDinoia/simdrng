@@ -63,6 +63,12 @@ CMake options:
 | `SIMDRNG_BUILD_DOCS`     | OFF     | Generate Sphinx/Doxygen docs                         |
 | `SIMDRNG_MARCH_NATIVE`   | OFF     | Compile benchmarks with `-march=native`              |
 | `SIMDRNG_ENABLE_CODSPEED`| OFF     | Link codspeed-cpp into the bench harness             |
+| `SIMDRNG_USE_SANITIZERS` | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer          |
+
+`CMakePresets.json` ships ready-made profiles so you rarely need raw `-D` flags:
+`release`, `debug`, `ci`, `bench`, `codspeed`, `sanitizers`, `tsan`, `valgrind`,
+`static-analysis`, `coverage`. For example `cmake --preset sanitizers && cmake
+--build --preset sanitizers && ctest --preset sanitizers`.
 
 With `SIMDRNG_WITH_XSIMD=OFF` the library is header-only and depends on nothing —
 only the scalar generators are built and `simdrng::Xoshiro` aliases the scalar
@@ -145,6 +151,29 @@ branch; CodSpeed tracks regressions per-PR. See
 [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
 ![Throughput overview (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/overview.svg)
+
+## Contributing
+
+Formatting and linting run through [pre-commit](https://pre-commit.com/)
+(clang-format, gersemi, darker/ruff, shfmt, markdownlint). Install once:
+
+```sh
+pip install pre-commit && pre-commit install
+git config blame.ignoreRevsFile .git-blame-ignore-revs   # skip the bulk-format commit in blame
+```
+
+## References
+
+- D. Blackman and S. Vigna, *Scrambled Linear Pseudorandom Number Generators*,
+  ACM TOMS (2021) — <https://vigna.di.unimi.it/papers.php#BlVSLPNG>.
+- S. Vigna, the xoshiro/xoroshiro family and PRNG shootout — <https://prng.di.unimi.it/>.
+  xoshiro256++ has period 2²⁵⁶−1; SplitMix64 is used to seed it. `uniform()`'s
+  `(x >> 11) * 0x1.0p-53` follows the [equidistribution rationale](https://prng.di.unimi.it/#remarks)
+  (*"all dyadic rationals of the form k·2⁻⁵³ will be equally likely"*).
+- The reference `splitmix64.c` / `xoshiro256plusplus.c` used by the tests are
+  the authors' own public-domain (CC0) code from <https://prng.di.unimi.it/>.
+
+More detail in [docs → references](https://simdrng.readthedocs.io/en/latest/references.html).
 
 ## License
 
