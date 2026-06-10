@@ -48,6 +48,17 @@ jobs:
       - name: Build
         run: cmake --build --preset bench
 
+      # Vector-width / register-spill audit of the compiled hot paths. Rides
+      # along in the bench artifact; informational only (no
+      # --fail-on-devectorisation), since the dispatch tier is a runtime choice.
+      - name: ASM vectorisation/spill audit
+        run: |
+          mkdir -p results/${{ matrix.compiler }}
+          python3 tools/asm_audit.py build/bench/tests/benchmarks \
+            --compiler ${{ matrix.compiler }} \
+            --md results/${{ matrix.compiler }}/asm_audit.md \
+            --json results/${{ matrix.compiler }}/asm_audit.json
+
       - name: Run benchmarks
         run: |
           mkdir -p results/${{ matrix.compiler }}
