@@ -47,17 +47,29 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
   // most ALU ports idle while it waits on latency; interleaving K of them fills
   // those ports. K is budgeted from the vector register file for *this* arch
   // (poet::vector_register_count() is consteval and reflects the ISA the TU is
-  // compiled for: 16 for SSE2/AVX2, 32 for AVX-512), so each (N, W, Arch) combo
-  // gets a K sized to that arch with no per-combo special-casing.
+  // compiled for: 16 for SSE2/AVX2, 32 for AVX-512), shared between the K*N live
+  // counter words and the per-round multiply transients — no per-combo literals.
   //
-  // Budget: reserve half the register file for the K*N live counter words and
-  // half for the per-round transients (the mul_hilo 64x64->128 synthesis tree,
-  // hi/lo products, key broadcasts) -> K = (VREG/2)/N. On avx2 this is the
-  // measured sweet spot for N=4 (K=2; K=3 spills and regresses ~7%) and stays
-  // spill-safe for N=2 (K=4); on AVX-512 it scales to K=4 (N=4) / K=8 (N=2).
+  // The scratch reserve scales with the widening-multiply cost, which depends on
+  // W. The 64-bit mul_hilo synthesises 64x64->128 from four 32x32 partials plus
+  // a carry/shift tree (~half the file of live transients); reserving VREG/2
+  // gives K=(VREG/2)/N. On avx2 N=4 that is K=2, which is the *measured optimum*:
+  // the 64-bit kernel is ALU-port-bound (~925 vector-ALU uops per 2-batch group
+  // / 3 ports ~= 308 cyc floor), so more interleave only adds register pressure
+  // and slips (K=3..6 all regress; a K=2..6 sweep confirms K=2 is the peak).
+  //
+  // The 32-bit path multiplies with a cheap mulhi and leaves the kernel
+  // latency-bound rather than port-bound, so extra interleave keeps paying off:
+  // devote the *whole* file to counters (reserve 0 -> K=VREG/N) and let the wider
+  // ILP hide the multiply latency. The counter spills this costs land on the
+  // otherwise-idle load ports. Measured avx2 N=4 W=32 optimum is K=4 (+5% over
+  // the old K=2; the K=2..6 sweep peaks there and falls off by K=5). For W=64
+  // this expression is identical to the prior (VREG/2)/N, so the 64-bit codegen
+  // is unchanged.
   static constexpr std::uint16_t INTERLEAVE = []() constexpr -> std::uint16_t {
-    const std::size_t live_budget = poet::vector_register_count() / 2;
-    std::size_t k = live_budget / N;
+    const std::size_t vreg = poet::vector_register_count();
+    const std::size_t scratch = (W >= 64) ? vreg / 2 : 0;
+    std::size_t k = (vreg - scratch) / N;
     if (k < 1)
       k = 1;
     if (k > BATCHES_PER_CACHE)
