@@ -178,7 +178,8 @@ private:
   static SIMDRNG_ALWAYS_INLINE void init_counter_batch(std::array<simd_type, N> &ctr_simd,
                                                        const counter_type &counter) noexcept {
     alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> offsets{};
-    poet::static_for<0, SIMD_WIDTH>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { offsets[I] = static_cast<word_type>(I.value); });
+    poet::static_for<0, SIMD_WIDTH>([&](auto I)
+                                        SIMDRNG_ALWAYS_INLINE_LAMBDA { offsets[I] = static_cast<word_type>(I.value); });
 
     auto carry = simd_type::load_aligned(offsets.data());
     poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA {
@@ -212,14 +213,24 @@ private:
       constexpr std::uint8_t WORDS_PER_RESULT = static_cast<std::uint8_t>(64 / W);
       alignas(simd_type::arch_type::alignment()) std::array<word_type, SIMD_WIDTH> regs[N];
       poet::static_for<0, N>([&](auto I) SIMDRNG_ALWAYS_INLINE_LAMBDA { ctr_simd[I].store_aligned(regs[I].data()); });
-      poet::static_for<0, SIMD_WIDTH>([&](auto Lane) SIMDRNG_ALWAYS_INLINE_LAMBDA {
-        poet::static_for<0, RESULTS_PER_BLOCK>([&](auto K) SIMDRNG_ALWAYS_INLINE_LAMBDA {
-          result_type acc = 0;
-          poet::static_for<0, WORDS_PER_RESULT>([&](auto Wd) SIMDRNG_ALWAYS_INLINE_LAMBDA {
-            acc |= static_cast<result_type>(regs[K * WORDS_PER_RESULT + Wd][Lane]) << (Wd * W);
-          });
-          cache[Lane * RESULTS_PER_BLOCK + K] = acc;
-        });
+      // dynamic_for fully unrolls each (lane, k, wd) — every bound is a constant,
+      // so Unroll == count and the block expands at compile time — while threading
+      // a *runtime* running index for the addressing. The runtime indices keep the
+      // memory math a single running offset (no spilling SIMD_WIDTH*RESULTS_PER_BLOCK
+      // live compile-time-indexed values) and keep the chained regs[..][..] subscript
+      // over built-in integers, which MSVC mis-parses when fed integral_constant
+      // arithmetic. The innermost uses the (lane, index) form so the compile-time
+      // `wd` lane still folds the shift while `wd_idx` addresses the word.
+      poet::dynamic_for<SIMD_WIDTH>(std::size_t{SIMD_WIDTH}, [&](std::size_t lane) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+        poet::dynamic_for<RESULTS_PER_BLOCK>(
+            std::size_t{RESULTS_PER_BLOCK}, [&](std::size_t k) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+              result_type acc = 0;
+              poet::dynamic_for<WORDS_PER_RESULT>(
+                  std::size_t{WORDS_PER_RESULT}, [&](auto wd, std::size_t wd_idx) SIMDRNG_ALWAYS_INLINE_LAMBDA {
+                    acc |= static_cast<result_type>(regs[k * WORDS_PER_RESULT + wd_idx][lane]) << (wd * W);
+                  });
+              cache[lane * RESULTS_PER_BLOCK + k] = acc;
+            });
       });
     }
   }
