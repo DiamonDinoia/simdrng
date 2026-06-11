@@ -2,7 +2,7 @@ name: Wheels
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/philox-msvc-scatter]
     tags: ["v*"]
   pull_request:
     branches: [main]

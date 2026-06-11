@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/philox-msvc-scatter]
   pull_request:
     branches: [main]
 
