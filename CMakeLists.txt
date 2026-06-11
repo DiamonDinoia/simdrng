@@ -93,13 +93,13 @@ endif()
 #   poet  : compile-time helpers used by the SIMD headers and Python bindings.
 # Pinned by SHA for reproducibility.
 # ---------------------------------------------------------------------------
-set(XSIMD_DOWNLOAD_VERSION 01f17ece3f1687a2b04bf013c39a5c71e368cffb) # xtensor-stack/xsimd master HEAD (mulhilo merged)
+set(XSIMD_DOWNLOAD_VERSION b3794392332053b731a53a2ffb45e6b5288acf31) # DiamonDinoia/xsimd fused-mul-hilo — fused mul_hilo + dropped redundant mul_epu32 input masks; revert to xtensor-stack/xsimd once merged upstream (base: master 01f17ec)
 set(POET_DOWNLOAD_VERSION 7562dbdab569739d526cc3174bea25f618ba74f7) # DiamonDinoia/poet v0.0.0
 
 if(SIMDRNG_WITH_XSIMD)
     cpmaddpackage(
             NAME xsimd
-            GITHUB_REPOSITORY xtensor-stack/xsimd
+            GITHUB_REPOSITORY DiamonDinoia/xsimd
             GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
             GIT_SHALLOW NO
             GIT_PROGRESS YES
