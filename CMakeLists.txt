@@ -93,7 +93,7 @@ endif()
 #   poet  : compile-time helpers used by the SIMD headers and Python bindings.
 # Pinned by SHA for reproducibility.
 # ---------------------------------------------------------------------------
-set(XSIMD_DOWNLOAD_VERSION b3794392332053b731a53a2ffb45e6b5288acf31) # DiamonDinoia/xsimd fused-mul-hilo — fused mul_hilo + dropped redundant mul_epu32 input masks; revert to xtensor-stack/xsimd once merged upstream (base: master 01f17ec)
+set(XSIMD_DOWNLOAD_VERSION 15603d4560a210018202ae7541c5b71e611e1eeb) # DiamonDinoia/xsimd fused-mul-hilo — fused mul_hilo for 64-bit batches (shared 32x32->64 partials); revert to xtensor-stack/xsimd once merged upstream (base: master 01f17ec)
 set(POET_DOWNLOAD_VERSION 7562dbdab569739d526cc3174bea25f618ba74f7) # DiamonDinoia/poet v0.0.0
 
 if(SIMDRNG_WITH_XSIMD)
