@@ -2,9 +2,13 @@ name: pre-commit
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+
+concurrency:
+  # Branch push and its PR share one group (see ci.yml) instead of running twice.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   pre-commit:
