@@ -140,6 +140,19 @@ include(cmake/CompilerOptions.cmake)
 
 check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_msg LANGUAGES CXX)
 
+# When IPO is on under GCC, build the library with *fat* LTO objects (machine code
+# alongside the GIMPLE bytecode). The library and benchmarks still link with full
+# LTO, but the test executables link with -fno-lto (see tests/CMakeLists.txt) and
+# so consume the embedded machine code directly. That keeps lto-wrapper out of the
+# test link entirely, which sidesteps a GCC aarch64 LTO ICE
+# (internal compiler error in lto_tag_to_tree_code) hit while streaming some of the
+# dispatch template instantiations that only testBulkAPI pulls in — a known GCC LTO
+# bug, not a code defect (clang/aarch64 and gcc/x86 link the same objects cleanly).
+set(_ipo_fat_flag "")
+if(_ipo_ok AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(_ipo_fat_flag "-ffat-lto-objects")
+endif()
+
 if(
     NOT DEFINED CMAKE_LINKER_TYPE
     AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
@@ -199,6 +212,9 @@ if(SIMDRNG_WITH_XSIMD)
     # are only instantiated in dispatch TUs compiled with the correct -march flags.
     add_compile_flags_if_supported(TEMPLATE_BODY_FLAGS -Wno-template-body)
     target_compile_options(simdrng PUBLIC ${TEMPLATE_BODY_FLAGS})
+    if(_ipo_fat_flag)
+        target_compile_options(simdrng PRIVATE ${_ipo_fat_flag})
+    endif()
     target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
     target_compile_features(simdrng INTERFACE cxx_std_20)
 else()
@@ -280,7 +296,7 @@ if(SIMDRNG_WITH_XSIMD)
             )
             target_compile_options(
                 ${SIMD_SOURCE_TARGET}
-                PRIVATE ${SIMDRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}}
+                PRIVATE ${SIMDRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}} ${_ipo_fat_flag}
             )
             set_target_properties(
                 ${SIMD_SOURCE_TARGET}

@@ -171,8 +171,15 @@ set(SIMDRNG_SCALAR_TEST_TARGETS
     testPhilox
     testThreadSafety
 )
+# Link tests with -fno-lto under GCC. The library ships fat LTO objects (machine
+# code + bytecode; see the top-level CMakeLists), so the tests consume the machine
+# code directly and keep lto-wrapper out of the test link — sidestepping a GCC
+# aarch64 LTO ICE (in lto_tag_to_tree_code) hit while streaming the dispatch
+# template instantiations that only testBulkAPI pulls in. The library and the
+# benchmarks deliberately keep full LTO.
 foreach(_t IN LISTS SIMDRNG_SCALAR_TEST_TARGETS)
     simdrng_enable_warnings(${_t})
+    target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
 endforeach()
 
 # SIMD tests and benchmarks require the xsimd backend.
@@ -229,6 +236,11 @@ if(SIMDRNG_WITH_XSIMD)
         ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI benchmarks
     )
         simdrng_enable_warnings(${_t})
+    endforeach()
+
+    # Tests link with -fno-lto (see the scalar-test note above); benchmarks keep LTO.
+    foreach(_t IN ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI)
+        target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
     endforeach()
 
     # Convenience target to run the benchmarks with hardware counters enabled.
