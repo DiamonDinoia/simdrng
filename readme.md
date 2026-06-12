@@ -191,10 +191,10 @@ The full matrix runs in CI and is rendered to SVG on the
 branch; CodSpeed tracks regressions per-PR.
 
 The chart below shows `u64` bulk throughput — the native output of every
-engine — comparing the scalar loop against SIMD `generate()`. The
-single-value-latency vs bulk-throughput tradeoff, double generation
-(`uniform()` vs `std::uniform_real_distribution`), and memory cost are covered
-in [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
+engine — comparing the scalar loop against SIMD `generate()`. Per-call latency,
+double generation (`uniform()` vs `std::uniform_real_distribution`), and memory
+cost are covered in
+[docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
 ![Buffer-fill throughput, scalar vs SIMD (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/throughput.svg)
 
