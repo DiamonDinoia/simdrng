@@ -67,6 +67,15 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
   // this expression is identical to the prior (VREG/2)/N, so the 64-bit codegen
   // is unchanged.
   static constexpr std::uint16_t INTERLEAVE = []() constexpr -> std::uint16_t {
+#if defined(_MSC_VER) && !defined(__clang__)
+    // MSVC's frontend cost is superlinear in inlined-body size, and gen_block_group<K>
+    // expands to R*K fully-inlined round chains (each with the multi-partial fused
+    // mul_hilo). At the register-budgeted K (up to 8 on AVX-512) that is minutes per
+    // dispatch TU — the build blew past the CI cap. K only reorders independent batches
+    // for ILP; the cache output is bit-identical for any K (see gen_block_group). MSVC's
+    // codegen isn't what this knob tunes, so pin K=1 there: same results, tractable build.
+    return std::uint16_t{1};
+#else
     const std::size_t vreg = poet::vector_register_count();
     const std::size_t scratch = (W >= 64) ? vreg / 2 : 0;
     std::size_t k = (vreg - scratch) / N;
@@ -75,6 +84,7 @@ template <class Arch, std::uint8_t N, std::uint8_t W, std::uint8_t R> struct Phi
     if (k > BATCHES_PER_CACHE)
       k = BATCHES_PER_CACHE;
     return static_cast<std::uint16_t>(k);
+#endif
   }();
 
   counter_type m_counter;
