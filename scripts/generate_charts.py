@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -114,6 +115,8 @@ def scalar_vs_simd(benches: list[dict], subtitle: str, out: Path) -> None:
         if "Scalar" in d and "SIMD" in d and d["Scalar"]:
             labels.append(pretty_name(base))
             speedups.append(d["SIMD"] / d["Scalar"])
+        else:
+            print(f"warning: no Scalar/SIMD pair for {base!r}; omitting from speedup chart", file=sys.stderr)
     if not labels:
         return
     _bar_chart(labels, speedups, "SIMD speedup vs scalar", "speedup x",

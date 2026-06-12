@@ -177,6 +177,19 @@ static void BM_ChaCha20SIMD_fill_u64(benchmark::State &s) {
 }
 BENCHMARK(BM_ChaCha20SIMD_fill_u64);
 
+static void BM_ChaCha20Scalar_fill_double(benchmark::State &s) {
+  simdrng::ChaCha<20> rng(kChaChaKey, kChaChaCounter, kChaChaNonce);
+  aligned_vec<double> buf(kFillN);
+  for (auto _ : s) {
+    for (std::size_t i = 0; i < kFillN; ++i)
+      buf[i] = rng.uniform();
+    benchmark::DoNotOptimize(buf.data());
+    benchmark::ClobberMemory();
+  }
+  s.SetItemsProcessed(s.iterations() * kFillN);
+}
+BENCHMARK(BM_ChaCha20Scalar_fill_double);
+
 static void BM_ChaCha20SIMD_fill_double(benchmark::State &s) {
   simdrng::ChaChaSIMD<20> rng(kChaChaKey, kChaChaCounter, kChaChaNonce);
   aligned_vec<double> buf(kFillN);
@@ -269,6 +282,19 @@ static void BM_Philox4x64SIMD_fill_u64(benchmark::State &s) {
   s.SetItemsProcessed(s.iterations() * kFillN);
 }
 BENCHMARK(BM_Philox4x64SIMD_fill_u64);
+
+static void BM_Philox4x32Scalar_fill_double(benchmark::State &s) {
+  simdrng::Philox<4, 32, 10> rng(kSeed);
+  aligned_vec<double> buf(kFillN);
+  for (auto _ : s) {
+    for (std::size_t i = 0; i < kFillN; ++i)
+      buf[i] = rng.uniform();
+    benchmark::DoNotOptimize(buf.data());
+    benchmark::ClobberMemory();
+  }
+  s.SetItemsProcessed(s.iterations() * kFillN);
+}
+BENCHMARK(BM_Philox4x32Scalar_fill_double);
 
 static void BM_Philox4x32SIMD_fill_double(benchmark::State &s) {
   simdrng::PhiloxSIMD<4, 32, 10> rng(kSeed);

@@ -202,6 +202,13 @@ if(SIMDRNG_WITH_XSIMD)
     target_include_directories(testPhiloxSIMD PRIVATE ${TEST_INCLUDE_DIR})
     add_test(NAME testPhiloxSIMD COMMAND testPhiloxSIMD)
 
+    add_executable(testBulkAPI test_bulk_api.cpp)
+    target_link_libraries(
+        testBulkAPI
+        PRIVATE simdrng xsimd Catch2::Catch2WithMain
+    )
+    add_test(NAME testBulkAPI COMMAND testBulkAPI)
+
     add_executable(benchmarks benchmarks.cpp)
     target_include_directories(benchmarks PRIVATE ${TEST_INCLUDE_DIR})
     target_link_libraries(
@@ -219,7 +226,7 @@ if(SIMDRNG_WITH_XSIMD)
     foreach(
         _t
         IN
-        ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD benchmarks
+        ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI benchmarks
     )
         simdrng_enable_warnings(${_t})
     endforeach()
