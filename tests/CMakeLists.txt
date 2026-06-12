@@ -233,13 +233,22 @@ if(SIMDRNG_WITH_XSIMD)
     foreach(
         _t
         IN
-        ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI benchmarks
+        ITEMS
+            testXoshiroSIMD
+            testChaChaSIMD
+            testPhiloxSIMD
+            testBulkAPI
+            benchmarks
     )
         simdrng_enable_warnings(${_t})
     endforeach()
 
     # Tests link with -fno-lto (see the scalar-test note above); benchmarks keep LTO.
-    foreach(_t IN ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI)
+    foreach(
+        _t
+        IN
+        ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI
+    )
         target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
     endforeach()
 

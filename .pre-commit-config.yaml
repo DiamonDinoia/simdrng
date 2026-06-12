@@ -14,7 +14,7 @@ repos:
         name: clang-format (staged hunks)
         entry: python tools/clang-format-staged.py
         language: python
-        additional_dependencies: [clang-format==19.*]
+        additional_dependencies: [clang-format==22.*]
         pass_filenames: true
         require_serial: true
         types_or: [c++, c]
@@ -23,7 +23,7 @@ repos:
         name: gersemi (staged hunks)
         entry: python tools/gersemi-staged.py
         language: python
-        additional_dependencies: [gersemi==0.17.1]
+        additional_dependencies: [gersemi==0.27.7]
         pass_filenames: true
         require_serial: true
         # *.cmake.in templates (e.g. simdrngConfig.cmake.in with @PACKAGE_INIT@)
@@ -36,7 +36,7 @@ repos:
     hooks:
       - id: darker
         args: [--formatter=ruff]
-        additional_dependencies: [ruff==0.15.9]
+        additional_dependencies: [ruff==0.15.17]
 
   # --- Shell ---
   - repo: https://github.com/scop/pre-commit-shfmt
@@ -46,7 +46,7 @@ repos:
 
   # --- Markdown ---
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.17.2
+    rev: v0.22.1
     hooks:
       - id: markdownlint-cli2
         args: ["--config", ".markdownlint.json"]

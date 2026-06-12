@@ -263,18 +263,18 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
 }
 
 #if SIMDRNG_ARCH_X86_64
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
-XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
+extern template SIMDRNG_EXPORT
+    XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
 extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
 extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
 #elif SIMDRNG_ARCH_AARCH64
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
-XoshiroSIMDInitFunctor::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
+extern template SIMDRNG_EXPORT
+    XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
 #if XSIMD_WITH_SVE
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
-XoshiroSIMDInitFunctor::operator()<xsimd::sve>(xsimd::sve) const noexcept;
+extern template SIMDRNG_EXPORT
+    XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sve>(xsimd::sve) const noexcept;
 #endif
 #elif SIMDRNG_ARCH_RISCV64
 extern template SIMDRNG_EXPORT XoshiroSIMDInitResult

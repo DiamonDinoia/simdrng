@@ -14,9 +14,7 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-static unsigned int random_seed() {
-  return std::random_device{}();
-}
+static unsigned int random_seed() { return std::random_device{}(); }
 
 // ---------------------------------------------------------------------------
 // XoshiroSIMD / XoshiroNative
@@ -288,8 +286,8 @@ TEMPLATE_TEST_CASE("PhiloxSIMD generate bulk == sequential", "[philox][bulk]", P
   }
 }
 
-TEMPLATE_TEST_CASE("PhiloxSIMD fill_uniform range and bulk identity", "[philox][bulk]", PSIMD4x32, PSIMD4x64,
-                   PSIMD2x32, PSIMD2x64) {
+TEMPLATE_TEST_CASE("PhiloxSIMD fill_uniform range and bulk identity", "[philox][bulk]", PSIMD4x32, PSIMD4x64, PSIMD2x32,
+                   PSIMD2x64) {
   const auto seed = static_cast<std::uint64_t>(random_seed());
   INFO("SEED: " << seed);
   constexpr std::size_t N = 512;
@@ -343,8 +341,8 @@ TEMPLATE_TEST_CASE("PhiloxSIMD getCounter / getKey / setState round-trip", "[phi
   REQUIRE(from_orig == from_restored);
 }
 
-TEMPLATE_TEST_CASE("PhiloxSIMD getCounter (live cursor) vs getCounterForSerde", "[philox][state]", PSIMD4x32,
-                   PSIMD4x64, PSIMD2x32, PSIMD2x64) {
+TEMPLATE_TEST_CASE("PhiloxSIMD getCounter (live cursor) vs getCounterForSerde", "[philox][state]", PSIMD4x32, PSIMD4x64,
+                   PSIMD2x32, PSIMD2x64) {
   const auto seed = static_cast<std::uint64_t>(random_seed());
   INFO("SEED: " << seed);
 
@@ -527,8 +525,7 @@ using CC12SIMD = simdrng::ChaChaSIMD<12>;
 using CC20SIMD = simdrng::ChaChaSIMD<20>;
 
 // Helper: build a random key/counter/nonce from a std::mt19937_64
-template <typename ChaChaT>
-static ChaChaT make_chacha(unsigned int seed_val) {
+template <typename ChaChaT> static ChaChaT make_chacha(unsigned int seed_val) {
   std::mt19937 rng32(seed_val);
   std::mt19937_64 rng64(seed_val);
   std::array<typename ChaChaT::matrix_word, 8> key;

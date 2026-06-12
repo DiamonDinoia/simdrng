@@ -6,8 +6,7 @@ cmake_minimum_required(VERSION 3.29)
 # is baked into include/simdrng/version.hpp.
 # ---------------------------------------------------------------------------
 file(
-    STRINGS
-    "${CMAKE_CURRENT_SOURCE_DIR}/VERSION"
+    STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION"
     SIMDRNG_VERSION_BASE
     LIMIT_COUNT 1
 )
@@ -296,7 +295,9 @@ if(SIMDRNG_WITH_XSIMD)
             )
             target_compile_options(
                 ${SIMD_SOURCE_TARGET}
-                PRIVATE ${SIMDRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}} ${_ipo_fat_flag}
+                PRIVATE
+                    ${SIMDRNG_DISPATCH_FLAGS_${TARGET_SUFFIX}}
+                    ${_ipo_fat_flag}
             )
             set_target_properties(
                 ${SIMD_SOURCE_TARGET}

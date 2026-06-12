@@ -81,16 +81,14 @@ function(simdrng_enable_warnings target)
         list(APPEND _opts $<$<AND:${_cxx},${_gnu_or_clang}>:${flag}>)
     endforeach()
     list(
-        APPEND
-        _opts
+        APPEND _opts
         $<$<AND:${_cxx},${_msvc}>:/W4>
         $<$<AND:${_cxx},${_msvc}>:/permissive->
     )
 
     if(SIMDRNG_WARNINGS_AS_ERRORS)
         list(
-            APPEND
-            _opts
+            APPEND _opts
             $<$<AND:${_cxx},${_gnu_or_clang}>:-Werror>
             $<$<AND:${_cxx},${_msvc}>:/WX>
         )

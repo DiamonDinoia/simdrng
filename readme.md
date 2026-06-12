@@ -124,16 +124,16 @@ ctest --preset test
 
 CMake options:
 
-| Option                    | Default | Purpose                                              |
-|---------------------------|---------|------------------------------------------------------|
+| Option                    | Default | Purpose                                                               |
+|---------------------------|---------|-----------------------------------------------------------------------|
 | `SIMDRNG_WITH_XSIMD`      | ON      | Build the SIMD backends with xsimd (OFF = scalar-only header library) |
-| `SIMDRNG_BUILD_TESTS`     | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`) |
-| `SIMDRNG_BUILD_PYTHON`    | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`) |
-| `SIMDRNG_BUILD_EXAMPLES`  | OFF     | Build C++ examples under `examples/cpp`              |
-| `SIMDRNG_BUILD_DOCS`      | OFF     | Generate Sphinx/Doxygen docs                         |
-| `SIMDRNG_MARCH_NATIVE`    | OFF     | Compile benchmarks with `-march=native`              |
-| `SIMDRNG_ENABLE_CODSPEED` | OFF     | Link codspeed-cpp into the bench harness             |
-| `SIMDRNG_USE_SANITIZERS`  | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer          |
+| `SIMDRNG_BUILD_TESTS`     | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`)         |
+| `SIMDRNG_BUILD_PYTHON`    | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`)   |
+| `SIMDRNG_BUILD_EXAMPLES`  | OFF     | Build C++ examples under `examples/cpp`                               |
+| `SIMDRNG_BUILD_DOCS`      | OFF     | Generate Sphinx/Doxygen docs                                          |
+| `SIMDRNG_MARCH_NATIVE`    | OFF     | Compile benchmarks with `-march=native`                               |
+| `SIMDRNG_ENABLE_CODSPEED` | OFF     | Link codspeed-cpp into the bench harness                              |
+| `SIMDRNG_USE_SANITIZERS`  | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer                           |
 
 With `SIMDRNG_WITH_XSIMD=OFF` the library is header-only and depends on nothing —
 only the scalar generators are built and `simdrng::Xoshiro` aliases the scalar
