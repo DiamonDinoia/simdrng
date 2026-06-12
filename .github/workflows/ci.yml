@@ -125,6 +125,10 @@ jobs:
   other:
     name: ${{ matrix.os }} / ${{ matrix.compiler }}
     runs-on: ${{ matrix.os }}
+    # A normal native build+test here is a few minutes; cap it so a compile-time
+    # pathology (e.g. MSVC choking on deeply-nested template expansion) fails fast
+    # instead of silently consuming the 6-hour default job timeout.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -206,9 +210,14 @@ jobs:
                 --error-exitcode=1 -Iinclude
 
   coverage:
-    name: Coverage (gcc + lcov)
+    name: Coverage (gcc + lcov, multi-ISA)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on main pushes and on every PR so coverage shows up pre-merge.
+    # (fix/philox-msvc-scatter is temporary — drop with the trigger revert.)
+    if: >-
+      github.event_name == 'pull_request'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/fix/philox-msvc-scatter'
     steps:
       - uses: actions/checkout@v6
       - name: Set up build
@@ -217,19 +226,66 @@ jobs:
           compiler: gcc-14
           cache-key-prefix: cpm-cov
           extra-apt-packages: lcov
-      - run: cmake --preset coverage
-      - run: cmake --build --preset coverage
-      - run: ctest --preset coverage
-      - name: Capture coverage
-        # aminya/setup-cpp installs gcc-14 but /usr/bin/gcov stays at the
-        # stock runner version; lcov's geninfo refuses the mismatch. Point
-        # it at the matching gcov-14.
+
+      # The library compiles a dispatch TU per ISA tier (SSE2 / AVX2 / AVX-512),
+      # but the AVX2 runner only ever *executes* the AVX2 tier — the other two
+      # (and the headers they expand) stay at 0%, sinking the reported total.
+      # Emulate each tier under Intel SDE and merge the per-tier traces so every
+      # tier is actually exercised. SDE wraps only the test binaries (via
+      # CMAKE_CROSSCOMPILING_EMULATOR), not ctest itself.
+      - name: Setup Intel SDE
+        uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: petarpetrovt/setup-sde@v5.0
+          with: |
+            environmentVariableName: SDE_PATH
+            sdeVersion: 10.8.0
+          attempt_limit: 4
+          attempt_delay: 15000
+
+      - name: Build (coverage preset)
         run: |
-          lcov --gcov-tool "$(command -v gcov-14)" \
-               --ignore-errors mismatch,source,gcov \
-               --directory build/coverage --capture --output-file coverage.info
+          cmake --preset coverage
+          cmake --build --preset coverage
+
+      # aminya/setup-cpp installs gcc-14 but /usr/bin/gcov stays at the stock
+      # runner version; lcov's geninfo refuses the mismatch, so point it at
+      # gcov-14. Each pass resets the .gcda counters, re-points the test
+      # emulator (no recompile — it's a ctest-time property), runs, and captures
+      # that tier's trace; the native pass needs no emulator. example_xoshiro_native
+      # is -march=native (host AVX2) so it can't run under an emulated older CPU.
+      - name: Coverage — AVX2 (native)
+        run: |
+          ctest --preset coverage
+          lcov --gcov-tool "$(command -v gcov-14)" --ignore-errors mismatch,source,gcov \
+               --directory build/coverage --capture --output-file cov-avx2.info
+
+      - name: Coverage — SSE2 (SDE Prescott)
+        run: |
+          find build/coverage -name '*.gcda' -delete
+          cmake --preset coverage -DCMAKE_CROSSCOMPILING_EMULATOR="${SDE_PATH}/sde64;-p4p;--"
+          ctest --preset coverage -E example_xoshiro_native
+          lcov --gcov-tool "$(command -v gcov-14)" --ignore-errors mismatch,source,gcov \
+               --directory build/coverage --capture --output-file cov-sse2.info
+
+      - name: Coverage — AVX-512 (SDE Skylake-X)
+        run: |
+          find build/coverage -name '*.gcda' -delete
+          cmake --preset coverage -DCMAKE_CROSSCOMPILING_EMULATOR="${SDE_PATH}/sde64;-skx;--"
+          ctest --preset coverage -E example_xoshiro_native
+          lcov --gcov-tool "$(command -v gcov-14)" --ignore-errors mismatch,source,gcov \
+               --directory build/coverage --capture --output-file cov-avx512.info
+
+      - name: Merge tiers + filter
+        run: |
+          lcov --ignore-errors unused \
+               --add-tracefile cov-avx2.info \
+               --add-tracefile cov-sse2.info \
+               --add-tracefile cov-avx512.info \
+               --output-file coverage.info
           lcov --ignore-errors unused --remove coverage.info \
                '/usr/*' '*_deps/*' '*/tests/*' --output-file coverage.info
+
       - uses: codecov/codecov-action@v6
         with:
           files: ./coverage.info
