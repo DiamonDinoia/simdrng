@@ -188,10 +188,13 @@ pip install -e '.[test]' --no-build-isolation
 
 The full matrix runs in CI and is rendered to SVG on the
 [`benchmark-results`](https://github.com/DiamonDinoia/simdrng/tree/benchmark-results)
-branch; CodSpeed tracks regressions per-PR. See
-[docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
+branch; CodSpeed tracks regressions per-PR.
 
-![Single-value latency (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/latency.svg)
+The chart below shows `u64` bulk throughput — the native output of every
+engine — comparing the scalar loop against SIMD `generate()`. The
+single-value-latency vs bulk-throughput tradeoff, double generation
+(`uniform()` vs `std::uniform_real_distribution`), and memory cost are covered
+in [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
 ![Buffer-fill throughput, scalar vs SIMD (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/throughput.svg)
 

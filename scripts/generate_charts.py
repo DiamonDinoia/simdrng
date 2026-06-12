@@ -103,18 +103,20 @@ def is_bulk(b: dict) -> bool:
 
 
 def latency_chart(benches: list[dict], subtitle: str, out: Path) -> None:
-    """Per-call latency (ns) for the single-value generators.
+    """Per-call ``u64`` latency (ns) for the single-value generators.
 
-    Each iteration is one ``operator()``/``uniform()`` call served from the
-    generator's buffered SIMD block, so ``real_time`` is the per-call latency
-    directly. Lower is better.
+    Each iteration is one ``operator()`` call served from the generator's
+    buffered SIMD block, so ``real_time`` is the per-call latency directly.
+    Lower is better. Restricted to u64 (the native output); the double paths
+    (``uniform()`` vs ``std::uniform_real_distribution``) are discussed in the
+    benchmarks docs.
     """
-    single = [b for b in benches if not is_bulk(b)]
+    single = [b for b in benches if not is_bulk(b) and "double" not in b["name"]]
     if not single:
         return
     names = [pretty_name(b["name"]) for b in single]
     ns = [float(b["real_time"]) for b in single]
-    _bar_chart(names, ns, "Single-value latency (lower is better)",
+    _bar_chart(names, ns, "Single-value u64 latency (lower is better)",
                "ns / eval", subtitle, out)
 
 
