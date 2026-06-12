@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, fix/philox-msvc-scatter]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -213,11 +213,9 @@ jobs:
     name: Coverage (gcc + lcov, multi-ISA)
     runs-on: ubuntu-24.04
     # Run on main pushes and on every PR so coverage shows up pre-merge.
-    # (fix/philox-msvc-scatter is temporary — drop with the trigger revert.)
     if: >-
       github.event_name == 'pull_request'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/fix/philox-msvc-scatter'
     steps:
       - uses: actions/checkout@v6
       - name: Set up build
