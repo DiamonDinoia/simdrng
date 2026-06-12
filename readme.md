@@ -191,7 +191,9 @@ The full matrix runs in CI and is rendered to SVG on the
 branch; CodSpeed tracks regressions per-PR. See
 [docs → benchmarks](https://simdrng.readthedocs.io/en/latest/benchmarks.html).
 
-![Throughput overview (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/overview.svg)
+![Single-value latency (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/latency.svg)
+
+![Buffer-fill throughput, scalar vs SIMD (gcc-15)](https://raw.githubusercontent.com/DiamonDinoia/simdrng/benchmark-results/charts/gcc-15/throughput.svg)
 
 ## Documentation
 

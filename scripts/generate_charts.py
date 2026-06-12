@@ -95,10 +95,55 @@ def _bar_chart(names: list[str], values: list[float], title: str, ylabel: str,
     plt.close(fig)
 
 
-def overview_chart(benches: list[dict], subtitle: str, out: Path) -> None:
-    names = [pretty_name(b["name"]) for b in benches]
-    op_per_s = [1e9 / float(b["real_time"]) / 1e6 for b in benches]  # Mop/s
-    _bar_chart(names, op_per_s, "Throughput (Mop/s)", "Mop/s", subtitle, out)
+def is_bulk(b: dict) -> bool:
+    """Bulk-fill benchmarks call ``SetItemsProcessed`` and report per-element
+    throughput in ``items_per_second``. Single-value benchmarks emit one value
+    per iteration and set no item count, so this field distinguishes the two."""
+    return b.get("items_per_second") is not None
+
+
+def latency_chart(benches: list[dict], subtitle: str, out: Path) -> None:
+    """Per-call latency (ns) for the single-value generators.
+
+    Each iteration is one ``operator()``/``uniform()`` call served from the
+    generator's buffered SIMD block, so ``real_time`` is the per-call latency
+    directly. Lower is better.
+    """
+    single = [b for b in benches if not is_bulk(b)]
+    if not single:
+        return
+    names = [pretty_name(b["name"]) for b in single]
+    ns = [float(b["real_time"]) for b in single]
+    _bar_chart(names, ns, "Single-value latency (lower is better)",
+               "ns / eval", subtitle, out)
+
+
+def _bulk_api(name: str) -> str:
+    """Label a bulk benchmark by the buffer-fill API it calls: ``generate()``
+    for u64 buffers, ``fill_uniform()`` for double buffers."""
+    label = pretty_name(name)
+    return label.replace("fill u64", "generate()").replace("fill double", "fill_uniform()")
+
+
+def throughput_chart(benches: list[dict], subtitle: str, out: Path) -> None:
+    """Buffer-fill throughput (Mop/s) for the ``generate``/``fill_uniform`` APIs.
+
+    ``real_time`` here covers the whole buffer (thousands of elements), so the
+    per-element rate lives in ``items_per_second``. Higher is better.
+
+    Restricted to ``generate()`` on u64 buffers, Scalar vs SIMD. Scalar has no
+    dedicated bulk API — it just loops ``operator()`` — but that is exactly the
+    baseline SIMD ``generate()`` is compared against. Native is dropped (it
+    duplicates SIMD on AVX2 hardware), and u64 is the representative workload.
+    """
+    bulk = [b for b in benches
+            if is_bulk(b) and "Native" not in b["name"] and b["name"].endswith("_fill_u64")]
+    if not bulk:
+        return
+    names = [_bulk_api(b["name"]) for b in bulk]
+    mops = [float(b["items_per_second"]) / 1e6 for b in bulk]
+    _bar_chart(names, mops, "Buffer-fill throughput (higher is better)",
+               "Mop/s", subtitle, out)
 
 
 def scalar_vs_simd(benches: list[dict], subtitle: str, out: Path) -> None:
@@ -133,7 +178,8 @@ def main() -> None:
     if args.path.is_file():
         benches = load_one(args.path)
         sub = cpu_label(args.path)
-        overview_chart(benches, sub, args.out / "overview.svg")
+        latency_chart(benches, sub, args.out / "latency.svg")
+        throughput_chart(benches, sub, args.out / "throughput.svg")
         scalar_vs_simd(benches, sub, args.out / "scalar_vs_simd.svg")
         return
 
@@ -147,7 +193,8 @@ def main() -> None:
         subtitle = f"{compiler_dir.name} · {cpu}" if cpu else compiler_dir.name
         out_dir = args.out / compiler_dir.name
         out_dir.mkdir(parents=True, exist_ok=True)
-        overview_chart(benches, subtitle, out_dir / "overview.svg")
+        latency_chart(benches, subtitle, out_dir / "latency.svg")
+        throughput_chart(benches, subtitle, out_dir / "throughput.svg")
         scalar_vs_simd(benches, subtitle, out_dir / "scalar_vs_simd.svg")
 
 
