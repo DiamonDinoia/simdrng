@@ -1,1 +1,1 @@
-AMD EPYC 7763 64-Core Processor
+AMD EPYC 9V74 80-Core Processor
