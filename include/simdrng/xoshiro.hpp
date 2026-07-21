@@ -11,4 +11,4 @@ using Xoshiro = XoshiroSIMD;
 #else
 using Xoshiro = XoshiroNative;
 #endif
-}
+} // namespace simdrng
