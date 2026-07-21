@@ -15,7 +15,7 @@ jobs:
       matrix:
         compiler: [gcc-14, gcc-15, clang-19, clang-20]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up build
         uses: ./.github/actions/setup-build
@@ -65,7 +65,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -73,7 +73,7 @@ jobs:
         with:
           path: bench-downloads
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with: { python-version: "3.11" }
 
       - run: pip install -r scripts/requirements.txt

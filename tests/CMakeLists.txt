@@ -1,7 +1,7 @@
 cpmaddpackage(
         NAME Catch2
         GITHUB_REPOSITORY catchorg/Catch2
-        VERSION 3.12.0
+        VERSION 3.15.2
         GIT_SHALLOW YES
         GIT_PROGRESS YES
         EXCLUDE_FROM_ALL YES
@@ -59,7 +59,7 @@ else()
     cpmaddpackage(
             NAME benchmark
             GITHUB_REPOSITORY google/benchmark
-            VERSION 1.9.1
+            VERSION 1.9.5
             GIT_SHALLOW YES
             GIT_PROGRESS YES
             EXCLUDE_FROM_ALL YES

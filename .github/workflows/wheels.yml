@@ -28,7 +28,7 @@ jobs:
       is_release: ${{ steps.v.outputs.is_release }}
       is_dev: ${{ steps.v.outputs.is_dev }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: v
         shell: bash
@@ -68,7 +68,7 @@ jobs:
           - { os: macos-15-intel,     arch: x86_64 }
           - { os: windows-2022,       arch: AMD64 }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with: { submodules: recursive, fetch-depth: 0 }
 
       - name: Stamp version + commit hash
@@ -90,11 +90,11 @@ jobs:
           PY
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v3.4.1
+        uses: pypa/cibuildwheel@v4.1.0
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
-          CIBW_SKIP: "*-musllinux_i686 *-musllinux_aarch64 pp*"
+          CIBW_SKIP: "*-musllinux_i686 *-musllinux_aarch64"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_BUILD_LINUX: >-
             yum install -y libpfm-devel || apt-get update && apt-get install -y libpfm4-dev || true
@@ -112,9 +112,9 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
 
       - name: Stamp version + commit hash
