@@ -41,14 +41,17 @@
 #define SIMDRNG_NEVER_INLINE
 #endif
 
+// simdrng ships as a STATIC library (and header-only public API). The per-arch
+// dispatch-functor instantiations and the out-of-line XoshiroSIMD ctor need
+// external linkage so the explicit instantiations resolve at static-link time,
+// but they are implementation details and must NOT be re-exported from a shared
+// object that links the static lib (e.g. the Python extension, which should
+// export only its module init). Mark them hidden; MSVC static libs don't export
+// without dllexport, so nothing is needed there.
 #if defined(__GNUC__) || defined(__clang__)
-#define SIMDRNG_EXPORT __attribute__((visibility("default")))
-#elif defined(_MSC_VER) && defined(SIMDRNG_BUILDING_SHARED)
-#define SIMDRNG_EXPORT __declspec(dllexport)
-#elif defined(_MSC_VER) && defined(SIMDRNG_USING_SHARED)
-#define SIMDRNG_EXPORT __declspec(dllimport)
+#define SIMDRNG_LOCAL __attribute__((visibility("hidden")))
 #else
-#define SIMDRNG_EXPORT
+#define SIMDRNG_LOCAL
 #endif
 
 // Architecture detection

@@ -263,7 +263,7 @@ ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()(Arch /*arch*/) const n
 }
 
 #define SIMDRNG_CHACHA_EXTERN_TEMPLATE(R, Arch)                                                                        \
-  extern template SIMDRNG_EXPORT ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()<Arch>(Arch) const noexcept
+  extern template SIMDRNG_LOCAL ChaChaSIMDInitResult ChaChaSIMDInitFunctor<R>::operator()<Arch>(Arch) const noexcept
 
 #if SIMDRNG_ARCH_X86_64
 SIMDRNG_CHACHA_EXTERN_TEMPLATE(8, xsimd::sse2);

@@ -334,7 +334,7 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arc
 
 // Extern template declarations for all NxW combos and architectures
 #define SIMDRNG_PHILOX_EXTERN_TEMPLATE(N, W, R, Arch)                                                                  \
-  extern template SIMDRNG_EXPORT PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch)     \
+  extern template SIMDRNG_LOCAL PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()<Arch>(Arch)     \
       const noexcept
 
 #define SIMDRNG_PHILOX_EXTERN_TEMPLATES_FOR_ARCH(Arch)                                                                 \

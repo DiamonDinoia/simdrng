@@ -27,5 +27,5 @@ PREDEFINED             = SIMDRNG_ALWAYS_INLINE= \
                          SIMDRNG_FLATTEN= \
                          SIMDRNG_RESTRICT= \
                          SIMDRNG_NEVER_INLINE= \
-                         SIMDRNG_EXPORT= \
+                         SIMDRNG_LOCAL= \
                          __attribute__(x)=

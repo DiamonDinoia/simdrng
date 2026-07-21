@@ -78,7 +78,7 @@ cpp_id_attributes = [
     "SIMDRNG_FLATTEN",
     "SIMDRNG_RESTRICT",
     "SIMDRNG_NEVER_INLINE",
-    "SIMDRNG_EXPORT",
+    "SIMDRNG_LOCAL",
 ]
 
 

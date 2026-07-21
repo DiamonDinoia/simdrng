@@ -251,21 +251,21 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
 }
 
 #if SIMDRNG_ARCH_X86_64
-extern template SIMDRNG_EXPORT
+extern template SIMDRNG_LOCAL
     XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sse2>(xsimd::sse2) const noexcept;
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
+extern template SIMDRNG_LOCAL XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::avx2>(xsimd::avx2) const noexcept;
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
+extern template SIMDRNG_LOCAL XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::avx512bw>(xsimd::avx512bw) const noexcept;
 #elif SIMDRNG_ARCH_AARCH64
-extern template SIMDRNG_EXPORT
+extern template SIMDRNG_LOCAL
     XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::neon64>(xsimd::neon64) const noexcept;
 #if XSIMD_WITH_SVE
-extern template SIMDRNG_EXPORT
+extern template SIMDRNG_LOCAL
     XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()<xsimd::sve>(xsimd::sve) const noexcept;
 #endif
 #elif SIMDRNG_ARCH_RISCV64
-extern template SIMDRNG_EXPORT XoshiroSIMDInitResult
+extern template SIMDRNG_LOCAL XoshiroSIMDInitResult
 XoshiroSIMDInitFunctor::operator()<xsimd::detail::rvv<128>>(xsimd::detail::rvv<128>) const noexcept;
 #endif
 
@@ -379,7 +379,7 @@ public:
     return (std::numeric_limits<result_type>::max)();
   }
 
-  SIMDRNG_EXPORT explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
+  SIMDRNG_LOCAL explicit XoshiroSIMD(result_type seed, result_type thread_id = 0, result_type cluster_id = 0) noexcept;
 
   SIMDRNG_ALWAYS_INLINE result_type operator()() noexcept {
     if (m_index == 0) [[unlikely]] {
