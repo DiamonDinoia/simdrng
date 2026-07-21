@@ -31,3 +31,4 @@ Testing/
 
 # Generated at wheel-build time
 python/simdrng/_version.py
+tmp
