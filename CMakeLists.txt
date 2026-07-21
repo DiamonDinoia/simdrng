@@ -33,9 +33,10 @@ option(
 option(SIMDRNG_BUILD_PYTHON "Build the nanobind Python bindings" OFF)
 option(
     SIMDRNG_DISPATCH
-    "Build every SIMD tier and pick the best at runtime (portable binaries to \
-ship). OFF (default) builds a single native tier: fastest for the build host, \
-NOT portable — for local/run-only builds."
+    "Build every SIMD tier and select at runtime; simdrng::Xoshiro aliases the \
+portable dispatch type (binaries to ship). OFF (default) builds no tier and \
+aliases XoshiroNative (xsimd::best_arch): fastest for the build host, NOT \
+portable — for local/run-only builds."
     OFF
 )
 option(SIMDRNG_BUILD_EXAMPLES "Build the C++ examples under examples/cpp" OFF)
@@ -183,49 +184,63 @@ endif()
 target_compile_features(simdrng PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD})
 target_compile_features(simdrng INTERFACE cxx_std_20)
 
-# ---------------------------------------------------------------------------
-# Architecture-specific SIMD dispatch variants.
-# With SIMDRNG_DISPATCH=ON each variant is compiled in its own TU with flags
-# that enable a specific SIMD level; xsimd::dispatch picks the best available at
-# runtime — portable binaries safe on any CPU down to the baseline (ship path).
-# With SIMDRNG_DISPATCH=OFF (default) a single -mcpu/-march=native TU is built:
-# fastest for the build host but NOT portable (lower-tier templates get native
-# codegen), correct only for local/run-only builds.
-# ---------------------------------------------------------------------------
-if(NOT SIMDRNG_DISPATCH)
-    set(SIMDRNG_DISPATCH_VARIANTS "native")
-    if(MSVC)
-        set(SIMDRNG_DISPATCH_FLAGS_native /D__SSE2__) # MSVC has no -march=native
-    elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-        # Apple clang rejects -march=native and would drop to generic scheduling
-        # + lose FP16/crypto; -mcpu=native gives Apple-pipeline tuning + full ISA.
-        set(SIMDRNG_DISPATCH_FLAGS_native -mcpu=native)
-    else()
-        set(SIMDRNG_DISPATCH_FLAGS_native -march=native)
-    endif()
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-    set(SIMDRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
-    if(MSVC)
-        # MSVC has no -march equivalent and doesn't define __SSE2__ even
-        # though x64 is SSE2 baseline; define it explicitly so the dispatch
-        # TUs pick the right template instantiation. MSVC does define
-        # __AVX2__ under /arch:AVX2 and the AVX-512 family under /arch:AVX512.
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64 /D__SSE2__)
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3 /arch:AVX2)
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4 /arch:AVX512)
-    else()
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64 -march=x86-64 -mtune=generic)
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3 -march=x86-64-v3 -mtune=generic)
-        set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4 -march=x86-64-v4 -mtune=generic)
-    endif()
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-    set(SIMDRNG_DISPATCH_VARIANTS "neon64")
-    set(SIMDRNG_DISPATCH_FLAGS_neon64 "") # NEON is baseline on aarch64
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64$")
-    set(SIMDRNG_DISPATCH_VARIANTS "rvv")
-    set(SIMDRNG_DISPATCH_FLAGS_rvv -march=rv64gcv -mrvv-vector-bits=zvl)
+# Propagate the dispatch choice to consumers: it selects what simdrng::Xoshiro
+# aliases (XoshiroSIMD when ON, XoshiroNative/best_arch when OFF) and must match
+# the tiers actually compiled into the library. PUBLIC so it rides the installed
+# INTERFACE and downstream sees the same default.
+if(SIMDRNG_DISPATCH)
+    set(SIMDRNG_DISPATCH_VALUE 1)
 else()
-    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    set(SIMDRNG_DISPATCH_VALUE 0)
+endif()
+target_compile_definitions(
+    simdrng
+    PUBLIC SIMDRNG_DISPATCH=${SIMDRNG_DISPATCH_VALUE}
+)
+
+# ---------------------------------------------------------------------------
+# Architecture-specific SIMD dispatch variants (SIMDRNG_DISPATCH=ON only).
+# Each variant is compiled in its own TU with flags enabling a specific SIMD
+# level; xsimd::dispatch picks the best available at runtime — portable binaries
+# safe on any CPU down to the baseline (ship path). With SIMDRNG_DISPATCH=OFF
+# (default) no tier is built: SIMDRNG_DISPATCH_VARIANTS stays unset, the loop
+# below is a no-op, and simdrng::Xoshiro aliases XoshiroNative (xsimd::best_arch)
+# — fastest for the build host, non-portable, for local/run-only builds.
+# ---------------------------------------------------------------------------
+if(SIMDRNG_DISPATCH)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+        set(SIMDRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
+        if(MSVC)
+            # MSVC has no -march equivalent and doesn't define __SSE2__ even
+            # though x64 is SSE2 baseline; define it explicitly so the dispatch
+            # TUs pick the right template instantiation. MSVC does define
+            # __AVX2__ under /arch:AVX2 and the AVX-512 family under /arch:AVX512.
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64 /D__SSE2__)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3 /arch:AVX2)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4 /arch:AVX512)
+        else()
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64 -march=x86-64 -mtune=generic)
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v3
+                -march=x86-64-v3
+                -mtune=generic
+            )
+            set(SIMDRNG_DISPATCH_FLAGS_x86_64_v4
+                -march=x86-64-v4
+                -mtune=generic
+            )
+        endif()
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        set(SIMDRNG_DISPATCH_VARIANTS "neon64")
+        set(SIMDRNG_DISPATCH_FLAGS_neon64 "") # NEON is baseline on aarch64
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64$")
+        set(SIMDRNG_DISPATCH_VARIANTS "rvv")
+        set(SIMDRNG_DISPATCH_FLAGS_rvv -march=rv64gcv -mrvv-vector-bits=zvl)
+    else()
+        message(
+            FATAL_ERROR
+            "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}"
+        )
+    endif()
 endif()
 
 foreach(SIMDRNG_TYPE IN ITEMS xoshiro chacha philox)

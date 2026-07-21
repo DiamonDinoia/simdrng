@@ -54,6 +54,14 @@
 #define SIMDRNG_LOCAL
 #endif
 
+// Runtime SIMD dispatch. When 1, the *SIMD types dispatch over the compiled
+// per-arch tiers (portable, set by the CMake SIMDRNG_DISPATCH option, which
+// propagates this via a PUBLIC compile definition). Default 0: no tiers are
+// built and the default aliases resolve to the native (xsimd::best_arch) types.
+#ifndef SIMDRNG_DISPATCH
+#define SIMDRNG_DISPATCH 0
+#endif
+
 // Architecture detection
 #if defined(__x86_64__) || defined(_M_X64)
 #define SIMDRNG_ARCH_X86_64 1
