@@ -69,6 +69,18 @@ intersphinx_mapping = {
 primary_domain = "cpp"
 highlight_language = "cpp"
 
+# simdrng's inline/attribute macros can leak into Doxygen signatures (Doxygen
+# expands them inconsistently in template members). Tell the C++ domain to
+# treat them as ignorable attributes so parsing never breaks under -W.
+cpp_id_attributes = [
+    "SIMDRNG_ALWAYS_INLINE",
+    "SIMDRNG_ALWAYS_INLINE_LAMBDA",
+    "SIMDRNG_FLATTEN",
+    "SIMDRNG_RESTRICT",
+    "SIMDRNG_NEVER_INLINE",
+    "SIMDRNG_EXPORT",
+]
+
 
 def _run_doxygen_if_needed() -> None:
     """On RTD, run Doxygen here so Breathe has XML available."""

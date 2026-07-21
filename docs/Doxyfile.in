@@ -7,6 +7,11 @@ FILE_PATTERNS          = *.hpp *.h
 EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = NO
 EXTRACT_STATIC         = YES
+# Implementation detail, not public API: the internal dispatch/state plumbing
+# and the nested SIMD storage buffer. Keeping them out avoids documenting raw
+# function-pointer vtables and unparseable lambda initializers.
+EXCLUDE_SYMBOLS        = simdrng::internal::* \
+                         simdrng::*::StateStorage
 GENERATE_HTML          = NO
 GENERATE_LATEX         = NO
 GENERATE_XML           = YES
@@ -18,6 +23,9 @@ ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = SIMDRNG_ALWAYS_INLINE= \
-                         SIMDRNG_HOT= \
-                         SIMDRNG_FORCE_INLINE= \
+                         SIMDRNG_ALWAYS_INLINE_LAMBDA= \
+                         SIMDRNG_FLATTEN= \
+                         SIMDRNG_RESTRICT= \
+                         SIMDRNG_NEVER_INLINE= \
+                         SIMDRNG_EXPORT= \
                          __attribute__(x)=
