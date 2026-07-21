@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover
     __commit__ = "unknown"
 
 from simdrng_ext import (
+    pow2,
     _SplitMix,
     _Xoshiro,
     _XoshiroSIMD,
@@ -209,8 +210,11 @@ class XoshiroBitGenerator(BitGeneratorBase):
         bg.state = state
         return bg
 
-    def jump(self) -> None:
-        self._core.jump()
+    def jump(self, n: int | pow2 | None = None) -> None:
+        if n is None:
+            self._core.jump()
+        else:
+            self._core.jump(n)
 
     def long_jump(self) -> None:
         self._core.long_jump()
@@ -231,8 +235,11 @@ class XoshiroSIMDBitGenerator(BitGeneratorBase):
         bg.state = state
         return bg
 
-    def jump(self) -> None:
-        self._core.jump()
+    def jump(self, n: int | pow2 | None = None) -> None:
+        if n is None:
+            self._core.jump()
+        else:
+            self._core.jump(n)
 
     def long_jump(self) -> None:
         self._core.long_jump()
@@ -255,8 +262,11 @@ if _XoshiroNative is not None:
             bg.state = state
             return bg
 
-        def jump(self) -> None:
-            self._core.jump()
+        def jump(self, n: int | pow2 | None = None) -> None:
+            if n is None:
+                self._core.jump()
+            else:
+                self._core.jump(n)
 
         def long_jump(self) -> None:
             self._core.long_jump()
@@ -722,6 +732,8 @@ __all__ = [
     "Philox2x32NativeBitGenerator",
     "Philox4x64NativeBitGenerator",
     "Philox2x64NativeBitGenerator",
+    # Power-of-two jump tag for Xoshiro.jump(pow2(e))
+    "pow2",
     # Global generator
     "seed",
     "default_rng",

@@ -112,17 +112,19 @@ template <class Arch> struct XoshiroState {
   }
 
   /**
-   * Jump function. Equivalent to 2^128 calls to next().
+   * Apply a jump polynomial to every lane: state <- poly(T) · state. All lanes
+   * share the same polynomial (same jump count). Shared by every jump variant.
    */
-  SIMDRNG_ALWAYS_INLINE constexpr void jump() noexcept {
-    constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
+  SIMDRNG_ALWAYS_INLINE constexpr void jump_poly(const result_type *SIMDRNG_RESTRICT poly) noexcept {
+    static_assert(std::tuple_size_v<detail::jump_poly_t> == RNG_WIDTH,
+                  "jump polynomial word count must match the state width");
     simd_type s0(0);
     simd_type s1(0);
     simd_type s2(0);
     simd_type s3(0);
-    for (const auto i : JUMP)
+    for (std::uint8_t w = 0; w < RNG_WIDTH; ++w)
       for (auto b = 0; b < 64; b++) {
-        if ((i & result_type{1} << b) != 0U) {
+        if ((poly[w] & result_type{1} << b) != 0U) {
           s0 ^= s[0];
           s1 ^= s[1];
           s2 ^= s[2];
@@ -137,28 +139,19 @@ template <class Arch> struct XoshiroState {
   }
 
   /**
+   * Jump function. Equivalent to 2^128 calls to next().
+   */
+  SIMDRNG_ALWAYS_INLINE constexpr void jump() noexcept {
+    constexpr result_type JUMP[] = {0x180ec6d33cfd0aba, 0xd5a61266f0c9392c, 0xa9582618e03fc9aa, 0x39abdc4529b1661c};
+    jump_poly(JUMP);
+  }
+
+  /**
    * Mid-jump function. Equivalent to 2^160 calls to next().
    */
   SIMDRNG_ALWAYS_INLINE constexpr void mid_jump() noexcept {
     constexpr result_type MID_JUMP[] = {0xc04b4f9c5d26c200, 0x69e6e6e431a2d40b, 0x4823b45b89dc689c, 0xf567382197055bf0};
-    simd_type s0(0);
-    simd_type s1(0);
-    simd_type s2(0);
-    simd_type s3(0);
-    for (const auto i : MID_JUMP)
-      for (auto b = 0; b < 64; b++) {
-        if ((i & result_type{1} << b) != 0U) {
-          s0 ^= s[0];
-          s1 ^= s[1];
-          s2 ^= s[2];
-          s3 ^= s[3];
-        }
-        next();
-      }
-    s[0] = s0;
-    s[1] = s1;
-    s[2] = s2;
-    s[3] = s3;
+    jump_poly(MID_JUMP);
   }
 
   /**
@@ -167,25 +160,19 @@ template <class Arch> struct XoshiroState {
   SIMDRNG_ALWAYS_INLINE constexpr void long_jump() noexcept {
     constexpr result_type LONG_JUMP[] = {0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241,
                                          0x39109bb02acbe635};
-    simd_type s0(0);
-    simd_type s1(0);
-    simd_type s2(0);
-    simd_type s3(0);
-    for (const auto i : LONG_JUMP)
-      for (auto b = 0; b < 64; b++) {
-        if ((i & result_type{1} << b) != 0U) {
-          s0 ^= s[0];
-          s1 ^= s[1];
-          s2 ^= s[2];
-          s3 ^= s[3];
-        }
-        next();
-      }
-    s[0] = s0;
-    s[1] = s1;
-    s[2] = s2;
-    s[3] = s3;
+    jump_poly(LONG_JUMP);
   }
+
+  /**
+   * Arbitrary jump-ahead: advances every lane by exactly n calls to next() via x^n mod P(x).
+   * Overload of jump(); no-argument jump() remains the fixed 2^128 stride.
+   */
+  SIMDRNG_ALWAYS_INLINE constexpr void jump(std::uint64_t n) noexcept { jump_poly(detail::jump_poly_n(n).data()); }
+
+  /**
+   * Power-of-two jump-ahead: advances every lane by 2^p.exponent calls to next() via x^(2^e) mod P(x).
+   */
+  SIMDRNG_ALWAYS_INLINE constexpr void jump(pow2 p) noexcept { jump_poly(detail::jump_poly_pow2(p.exponent).data()); }
 
   SIMDRNG_ALWAYS_INLINE constexpr std::array<result_type, RNG_WIDTH> getState(const std::size_t index) const noexcept {
     std::array<result_type, RNG_WIDTH> state{};
@@ -216,6 +203,7 @@ struct XoshiroSIMDInitResult {
   using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<std::uint64_t, 256> &SIMDRNG_RESTRICT) noexcept;
   using generate_fn = void (*)(void *SIMDRNG_RESTRICT, std::uint64_t *SIMDRNG_RESTRICT, std::size_t) noexcept;
   using jump_fn = void (*)(void *) noexcept;
+  using jump_n_fn = void (*)(void *, const std::uint64_t *) noexcept;
   using get_state_fn = void (*)(const void *, std::uint64_t *) noexcept;
   using set_state_fn = void (*)(void *, const std::uint64_t *) noexcept;
   using simd_width_fn = std::uint8_t (*)() noexcept;
@@ -224,6 +212,7 @@ struct XoshiroSIMDInitResult {
   jump_fn jump;
   jump_fn mid_jump;
   jump_fn long_jump;
+  jump_n_fn jump_n;
   get_state_fn get_state;
   set_state_fn set_state;
   simd_width_fn simd_width;
@@ -256,6 +245,7 @@ template <class Arch> XoshiroSIMDInitResult XoshiroSIMDInitFunctor::operator()(A
       +[](void *s) noexcept { static_cast<State *>(s)->jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->mid_jump(); },
       +[](void *s) noexcept { static_cast<State *>(s)->long_jump(); },
+      +[](void *s, const std::uint64_t *poly) noexcept { static_cast<State *>(s)->jump_poly(poly); },
       +[](const void *s, std::uint64_t *out) noexcept { static_cast<const State *>(s)->get_flat_state(out); },
       +[](void *s, const std::uint64_t *in) noexcept { static_cast<State *>(s)->set_flat_state(in); },
       +[]() noexcept -> std::uint8_t { return State::SIMD_WIDTH; },
@@ -358,6 +348,8 @@ public:
   SIMDRNG_ALWAYS_INLINE void jump() noexcept { m_state.jump(); }
   SIMDRNG_ALWAYS_INLINE void mid_jump() noexcept { m_state.mid_jump(); }
   SIMDRNG_ALWAYS_INLINE void long_jump() noexcept { m_state.long_jump(); }
+  SIMDRNG_ALWAYS_INLINE void jump(result_type n) noexcept { m_state.jump(n); }
+  SIMDRNG_ALWAYS_INLINE void jump(pow2 p) noexcept { m_state.jump(p); }
 
   void get_flat_state(result_type *out) const noexcept { m_state.get_flat_state(out); }
   void set_flat_state(const result_type *in) noexcept { m_state.set_flat_state(in); }
@@ -445,6 +437,13 @@ public:
   SIMDRNG_ALWAYS_INLINE void mid_jump() noexcept { m_mid_jump(m_state.data); }
   SIMDRNG_ALWAYS_INLINE void long_jump() noexcept { m_long_jump(m_state.data); }
 
+  // Arbitrary jump-ahead. The jump polynomial x^n mod P(x) is arch-independent
+  // (pure scalar math), so it is computed once here and applied to every lane.
+  SIMDRNG_ALWAYS_INLINE void jump(result_type n) noexcept { m_jump_n(m_state.data, detail::jump_poly_n(n).data()); }
+
+  // Power-of-two jump-ahead: 2^p.exponent steps. Same arch-independent poly path.
+  SIMDRNG_ALWAYS_INLINE void jump(pow2 p) noexcept { m_jump_n(m_state.data, detail::jump_poly_pow2(p.exponent).data()); }
+
   void get_flat_state(result_type *out) const noexcept { m_get_state(m_state.data, out); }
   void set_flat_state(const result_type *in) noexcept { m_set_state(m_state.data, in); }
   std::uint8_t simd_width() const noexcept { return m_simd_width(); }
@@ -461,6 +460,7 @@ protected:
   using populate_fn = void (*)(void *SIMDRNG_RESTRICT, std::array<result_type, CACHE_SIZE> &SIMDRNG_RESTRICT) noexcept;
   using generate_fn = void (*)(void *SIMDRNG_RESTRICT, result_type *SIMDRNG_RESTRICT, std::size_t) noexcept;
   using jump_fn = void (*)(void *) noexcept;
+  using jump_n_fn = void (*)(void *, const result_type *) noexcept;
   using get_state_fn = void (*)(const void *, result_type *) noexcept;
   using set_state_fn = void (*)(void *, const result_type *) noexcept;
   using simd_width_fn = std::uint8_t (*)() noexcept;
@@ -482,6 +482,7 @@ protected:
   jump_fn m_jump = nullptr;
   jump_fn m_mid_jump = nullptr;
   jump_fn m_long_jump = nullptr;
+  jump_n_fn m_jump_n = nullptr;
   get_state_fn m_get_state = nullptr;
   set_state_fn m_set_state = nullptr;
   simd_width_fn m_simd_width = nullptr;

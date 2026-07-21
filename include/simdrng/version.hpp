@@ -5,10 +5,10 @@
 
 #define SIMDRNG_VERSION_MAJOR 0
 #define SIMDRNG_VERSION_MINOR 0
-#define SIMDRNG_VERSION_PATCH 1
+#define SIMDRNG_VERSION_PATCH 2
 
 // Full version string, including a `-dev.N+g<sha>` suffix on untagged builds.
-#define SIMDRNG_VERSION_STRING "0.0.1-dev.90+g9eb4a7c"
+#define SIMDRNG_VERSION_STRING "0.0.2-dev.136+g60e5cf1"
 
 // Numeric encoding (MAJOR * 10000 + MINOR * 100 + PATCH) for comparisons.
 #define SIMDRNG_VERSION \

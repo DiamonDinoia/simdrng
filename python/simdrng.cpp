@@ -387,9 +387,12 @@ template <> struct has_jump<simdrng::XoshiroNative> : std::true_type {};
 
 template <typename Rng, typename Class> void register_jump(Class &cls) {
   if constexpr (has_jump<Rng>::value) {
-    cls.def("jump", [](PyBitGenerator<Rng> &self) { self.rng.jump(); }).def("long_jump", [](PyBitGenerator<Rng> &self) {
-      self.rng.long_jump();
-    });
+    cls.def("jump", [](PyBitGenerator<Rng> &self) { self.rng.jump(); })
+        .def("long_jump", [](PyBitGenerator<Rng> &self) { self.rng.long_jump(); })
+        .def(
+            "jump", [](PyBitGenerator<Rng> &self, std::uint64_t n) { self.rng.jump(n); }, "n"_a)
+        .def(
+            "jump", [](PyBitGenerator<Rng> &self, simdrng::pow2 p) { self.rng.jump(p); }, "exp"_a);
   }
 }
 
@@ -398,6 +401,10 @@ template <typename Rng, typename Class> void register_jump(Class &cls) {
 // ---------------------------------------------------------------------------
 // Python module
 NB_MODULE(simdrng_ext, m) {
+  // Power-of-two jump tag: bg.jump(pow2(128)) advances by 2^128.
+  nb::class_<simdrng::pow2>(m, "pow2").def(nb::init<std::uint64_t>(), "exponent"_a).def_rw("exponent",
+                                                                                          &simdrng::pow2::exponent);
+
   using PySplitMix = PyBitGenerator<simdrng::SplitMix>;
   auto sm = nb::class_<PySplitMix>(m, "_SplitMix").def(nb::init<uint64_t>(), "seed"_a);
   register_base<simdrng::SplitMix>(sm);

@@ -142,6 +142,61 @@ assert jump_words(1 << 192) == REF_JUMP_2P192
 gen_2p160 = jump_words(1 << 160)
 print("2^160 =", ' '.join([f"0x{w:016x}" for w in gen_2p160]))
 
+# -----------------------------------------------------------------------------
+# Characteristic polynomial P(x) of the linear core, and the runtime
+# x^n mod P(x) path that the C++ jump_n() uses.
+#
+# e0 is a cyclic vector, so the minimal polynomial == the characteristic
+# polynomial (degree 256). Its low 256 coefficients are c = K^{-1} (T^256 e0):
+#   T^256 e0 = sum_{i<256} c_i T^i e0   <=>   P(x) = x^256 + sum c_i x^i.
+# CHARPOLY holds those low 256 bits (the x^256 term is implicit), packed
+# LSB-first into 4 uint64s exactly like the jump constants.
+# -----------------------------------------------------------------------------
+T256_e0 = gf2_matpow_vec(T, 256, e0)
+charpoly_bits = np.array(K_inv @ T256_e0, dtype=np.uint8)
+CHARPOLY = vec_bits_to_words(charpoly_bits)
+print("CHARPOLY =", ' '.join([f"0x{w:016x}" for w in CHARPOLY]))
+
+CHARPOLY_INT = sum(int(w) << (64 * i) for i, w in enumerate(CHARPOLY))
+P_INT = CHARPOLY_INT | (1 << 256)  # full degree-256 polynomial
+
+def polymul_mod(a: int, b: int) -> int:
+    """Multiply polynomials a, b (bit i = coeff of x^i) modulo P(x)."""
+    result = 0
+    for i in range(255, -1, -1):
+        result <<= 1
+        if result & (1 << 256):       # x^256 term appeared -> reduce
+            result ^= P_INT
+        if (a >> i) & 1:
+            result ^= b
+    return result
+
+def jump_poly_n_int(n: int) -> int:
+    """x^n mod P(x) via square-and-multiply in GF(2)[x]."""
+    result = 1   # x^0
+    base = 2     # x^1
+    while n:
+        if n & 1:
+            result = polymul_mod(result, base)
+        n >>= 1
+        if n:
+            base = polymul_mod(base, base)
+    return result
+
+def jump_poly_words(n: int):
+    p = jump_poly_n_int(n)
+    return [(p >> (64 * i)) & MASK64 for i in range(4)]
+
+# Gold-standard cross-check: the on-the-fly polynomial path must reproduce both
+# the Krylov-derived coeffs and the published 2^128/2^160/2^192 constants. The
+# u64 C++ API can't reach 2^128, so this is the only place CHARPOLY is validated
+# against the reference at full width.
+for n in [0, 1, 2, 3, 5, 1000, 1 << 20, 1 << 40, 1 << 64, 1 << 128, 1 << 160, 1 << 192]:
+    assert jump_poly_words(n) == jump_words(n), f"x^n mod P mismatch at n={n}"
+assert jump_poly_words(1 << 128) == REF_JUMP_2P128
+assert jump_poly_words(1 << 192) == REF_JUMP_2P192
+print("x^n mod P(x) cross-check OK")
+
 # Notes:
 # - Building T and inverting K are one-time costs (~256^3 ops over GF(2)).
 # - After K_inv is known, each jump is O(log N) mat-mults via gf2_matpow_vec().

@@ -116,6 +116,80 @@ TEST_CASE("MID JUMP", "[xoshiro256++]") {
   }
 }
 
+TEST_CASE("JUMP_N PER LANE", "[xoshiro256++][jump_n]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  // Lane i is seeded as the scalar generator after i jumps; jump(k) then
+  // advances every lane by k. So lane i must match scalar(seed) + i jumps + jump(k).
+  for (const std::uint64_t k :
+       {std::uint64_t{0}, std::uint64_t{1}, std::uint64_t{5}, std::uint64_t{1000}, std::uint64_t{1} << 20}) {
+    INFO("k: " << k);
+    simdrng::XoshiroNative rng(seed);
+    std::vector<simdrng::XoshiroScalar> reference;
+    reference.reserve(SIMD_WIDTH);
+    for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
+      reference.emplace_back(seed);
+      for (auto j = 0UL; j < i; ++j)
+        reference[i].jump();
+    }
+    rng.jump(k);
+    for (auto &ref : reference)
+      ref.jump(k);
+    for (auto i = 0U; i < SIMD_WIDTH; ++i) {
+      INFO("i: " << i);
+      REQUIRE(rng.getState(i) == reference[i].getState());
+    }
+  }
+}
+
+TEST_CASE("SIMD DISPATCH JUMP_N", "[xoshiro256++][jump_n]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  const std::uint64_t k = (std::uint64_t{1} << 30) + 12345;
+  simdrng::XoshiroSIMD dispatched(seed);
+  simdrng::XoshiroNative native(seed);
+  dispatched.jump(k);
+  native.jump(k);
+  for (auto i = 0U; i < SIMD_WIDTH; ++i) {
+    INFO("i: " << i);
+    REQUIRE(dispatched() == native());
+  }
+}
+
+TEST_CASE("JUMP_N POW2 PER LANE", "[xoshiro256++][jump_n]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  // jump(pow2{128}) per lane must match the fixed jump() on the scalar reference.
+  simdrng::XoshiroNative rng(seed);
+  std::vector<simdrng::XoshiroScalar> reference;
+  reference.reserve(SIMD_WIDTH);
+  for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
+    reference.emplace_back(seed);
+    for (auto j = 0UL; j < i; ++j)
+      reference[i].jump();
+  }
+  rng.jump(simdrng::pow2{128});
+  for (auto &ref : reference)
+    ref.jump(); // jump() == 2^128 == pow2{128}
+  for (auto i = 0U; i < SIMD_WIDTH; ++i) {
+    INFO("i: " << i);
+    REQUIRE(rng.getState(i) == reference[i].getState());
+  }
+}
+
+TEST_CASE("SIMD DISPATCH JUMP_N POW2", "[xoshiro256++][jump_n]") {
+  const auto seed = std::random_device()();
+  INFO("SEED: " << seed);
+  simdrng::XoshiroSIMD dispatched(seed);
+  simdrng::XoshiroNative native(seed);
+  dispatched.jump(simdrng::pow2{200});
+  native.jump(simdrng::pow2{200});
+  for (auto i = 0U; i < SIMD_WIDTH; ++i) {
+    INFO("i: " << i);
+    REQUIRE(dispatched() == native());
+  }
+}
+
 TEST_CASE("GENERATE DOUBLE", "[xoshiro256++]") {
   const auto seed = std::random_device()();
   INFO("SEED: " << seed);

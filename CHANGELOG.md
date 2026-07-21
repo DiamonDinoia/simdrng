@@ -8,6 +8,17 @@ Pre-1.0, the public API may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+
+- xoshiro256: arbitrary and power-of-two jump-ahead. `jump(n)` advances the state
+  by exactly `n` calls to the generator (computing `x^n mod P(x)` on the fly via
+  square-and-multiply in GF(2)[x]), addressing any stream offset in `[0, 2^64)`.
+  `jump(pow2{e})` advances by `2^e` (via `x^(2^e) mod P(x)`), reaching strides
+  beyond `2^64` with the same convention as the fixed jumps — `jump(pow2{128})`
+  equals `jump()`. Both are available on `XoshiroScalar`, `XoshiroNative`, the
+  dispatched `XoshiroSIMD`, and the Python bindings (`pow2` is exported there).
+  The fixed `jump()`/`mid_jump()`/`long_jump()` strides are unchanged.
+
 ## [0.0.1]
 
 First tagged release. The project was renamed from `VectorXoshiro`/`prng` to

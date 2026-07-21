@@ -70,6 +70,19 @@ Internally ``jump()`` carves out non-overlapping per-thread subsequences and
 ``long_jump()`` per-cluster starting points. See :ref:`gen-properties` for the
 exact jump spacing and the full period table.
 
+To address an arbitrary stream offset, ``jump(n)`` advances the state by exactly
+``n`` calls to the generator. It builds the jump polynomial ``x^n mod P(x)`` on
+the fly (square-and-multiply in GF(2)[x]), so any ``n`` in ``[0, 2^64)`` works.
+For power-of-two strides (including those beyond ``2^64``), pass a ``pow2`` tag:
+``jump(pow2{e})`` advances by ``2^e`` — the same convention as the fixed jumps,
+so ``jump(pow2{128})`` is identical to ``jump()``.
+
+.. code-block:: cpp
+
+   rng.jump(offset);        // skip ahead `offset` outputs in O(log offset)
+   rng.jump(pow2{200});     // skip ahead 2^200 outputs
+   rng.jump(pow2{128});     // == rng.jump()
+
 References
 ----------
 

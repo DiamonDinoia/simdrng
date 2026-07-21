@@ -205,6 +205,57 @@ class TestJump:
         np.testing.assert_array_equal(rng1.random(100), rng2.random(100))
 
 
+class TestJumpN:
+    def test_jump_n_forward_oracle(self):
+        # Scalar Xoshiro has no per-lane cache: jump(k) must equal k raw draws.
+        k = 1234
+        advanced = simdrng.Xoshiro(42)
+        advanced.bit_generator.random_raw(k)
+        jumped = simdrng.Xoshiro(42)
+        jumped.bit_generator.jump(k)
+        np.testing.assert_array_equal(
+            jumped.bit_generator.random_raw(50),
+            advanced.bit_generator.random_raw(50),
+        )
+
+    def test_jump_n_composition(self, jump_factory):
+        _name, factory = jump_factory
+        a, b = 1_000_000, 7_654_321
+        split = factory()
+        combined = factory()
+        split.bit_generator.jump(a)
+        split.bit_generator.jump(b)
+        combined.bit_generator.jump(a + b)
+        np.testing.assert_array_equal(split.random(100), combined.random(100))
+
+    def test_jump_n_zero_is_identity(self, jump_factory):
+        _name, factory = jump_factory
+        rng1 = factory()
+        rng2 = factory()
+        rng2.bit_generator.jump(0)
+        np.testing.assert_array_equal(rng1.random(100), rng2.random(100))
+
+    def test_jump_pow2_matches_fixed_jump(self, jump_factory):
+        # jump(pow2(128)) is exactly the fixed 2^128 jump().
+        _name, factory = jump_factory
+        by_pow2 = factory()
+        by_jump = factory()
+        by_pow2.bit_generator.jump(simdrng.pow2(128))
+        by_jump.bit_generator.jump()
+        np.testing.assert_array_equal(by_pow2.random(100), by_jump.random(100))
+
+    def test_jump_pow2_matches_step_count(self):
+        # Scalar Xoshiro, e < 64: 2^e stride equals the raw step count 1 << e.
+        by_pow2 = simdrng.Xoshiro(42)
+        by_steps = simdrng.Xoshiro(42)
+        by_pow2.bit_generator.jump(simdrng.pow2(20))
+        by_steps.bit_generator.jump(1 << 20)
+        np.testing.assert_array_equal(
+            by_pow2.bit_generator.random_raw(50),
+            by_steps.bit_generator.random_raw(50),
+        )
+
+
 # ── Global generator ───────────────────────────────────────────────────────
 
 
