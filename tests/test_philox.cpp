@@ -9,9 +9,9 @@
 TEST_CASE("Philox4x32-10 reference vectors", "[philox]") {
   using P = simdrng::Philox<4, 32, 10>;
   using ctr_t = P::counter_type;
-  using key_t = P::key_type;
+  using key_type = P::key_type;
 
-  auto check_block = [](key_t key, ctr_t ctr, ctr_t expected) {
+  auto check_block = [](key_type key, ctr_t ctr, ctr_t expected) {
     P rng(key, ctr);
     rng();
     auto output = std::bit_cast<ctr_t>(rng.result_cache());
@@ -38,9 +38,9 @@ TEST_CASE("Philox4x32-10 reference vectors", "[philox]") {
 TEST_CASE("Philox2x32-10 reference vectors", "[philox]") {
   using P = simdrng::Philox<2, 32, 10>;
   using ctr_t = P::counter_type;
-  using key_t = P::key_type;
+  using key_type = P::key_type;
 
-  auto check_block = [](key_t key, ctr_t ctr, ctr_t expected) {
+  auto check_block = [](key_type key, ctr_t ctr, ctr_t expected) {
     P rng(key, ctr);
     rng();
     auto output = std::bit_cast<ctr_t>(rng.result_cache());
@@ -59,10 +59,10 @@ TEST_CASE("Philox2x32-10 reference vectors", "[philox]") {
 TEST_CASE("Philox4x64-10 reference vectors", "[philox]") {
   using P = simdrng::Philox<4, 64, 10>;
   using ctr_t = P::counter_type;
-  using key_t = P::key_type;
+  using key_type = P::key_type;
 
   SECTION("zeros") {
-    P rng(key_t{0, 0}, ctr_t{0, 0, 0, 0});
+    P rng(key_type{0, 0}, ctr_t{0, 0, 0, 0});
     REQUIRE(rng() == 0x16554d9eca36314cULL);
     REQUIRE(rng() == 0xdb20fe9d672d0fdcULL);
     REQUIRE(rng() == 0xd7e772cee186176bULL);
@@ -70,7 +70,7 @@ TEST_CASE("Philox4x64-10 reference vectors", "[philox]") {
   }
 
   SECTION("all ones") {
-    P rng(key_t{0xffffffffffffffffULL, 0xffffffffffffffffULL},
+    P rng(key_type{0xffffffffffffffffULL, 0xffffffffffffffffULL},
           ctr_t{0xffffffffffffffffULL, 0xffffffffffffffffULL, 0xffffffffffffffffULL, 0xffffffffffffffffULL});
     REQUIRE(rng() == 0x87b092c3013fe90bULL);
     REQUIRE(rng() == 0x438c3c67be8d0224ULL);
@@ -83,16 +83,16 @@ TEST_CASE("Philox4x64-10 reference vectors", "[philox]") {
 TEST_CASE("Philox2x64-10 reference vectors", "[philox]") {
   using P = simdrng::Philox<2, 64, 10>;
   using ctr_t = P::counter_type;
-  using key_t = P::key_type;
+  using key_type = P::key_type;
 
   SECTION("zeros") {
-    P rng(key_t{0}, ctr_t{0, 0});
+    P rng(key_type{0}, ctr_t{0, 0});
     REQUIRE(rng() == 0xca00a0459843d731ULL);
     REQUIRE(rng() == 0x66c24222c9a845b5ULL);
   }
 
   SECTION("all ones") {
-    P rng(key_t{0xffffffffffffffffULL}, ctr_t{0xffffffffffffffffULL, 0xffffffffffffffffULL});
+    P rng(key_type{0xffffffffffffffffULL}, ctr_t{0xffffffffffffffffULL, 0xffffffffffffffffULL});
     REQUIRE(rng() == 0x65b021d60cd8310fULL);
     REQUIRE(rng() == 0x4d02f3222f86df20ULL);
   }

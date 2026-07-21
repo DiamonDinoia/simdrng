@@ -1,7 +1,5 @@
 #pragma once
 
-#if SIMDRNG_WITH_XSIMD
-
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -582,4 +580,3 @@ using ChaCha20Native = ChaChaNative<20>;
 #endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 } // namespace simdrng
-#endif // SIMDRNG_WITH_XSIMD

@@ -22,8 +22,6 @@ Vigna.
 
 #pragma once
 
-#if SIMDRNG_WITH_XSIMD
-
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -442,7 +440,9 @@ public:
   SIMDRNG_ALWAYS_INLINE void jump(result_type n) noexcept { m_jump_n(m_state.data, detail::jump_poly_n(n).data()); }
 
   // Power-of-two jump-ahead: 2^p.exponent steps. Same arch-independent poly path.
-  SIMDRNG_ALWAYS_INLINE void jump(pow2 p) noexcept { m_jump_n(m_state.data, detail::jump_poly_pow2(p.exponent).data()); }
+  SIMDRNG_ALWAYS_INLINE void jump(pow2 p) noexcept {
+    m_jump_n(m_state.data, detail::jump_poly_pow2(p.exponent).data());
+  }
 
   void get_flat_state(result_type *out) const noexcept { m_get_state(m_state.data, out); }
   void set_flat_state(const result_type *in) noexcept { m_set_state(m_state.data, in); }
@@ -490,4 +490,3 @@ protected:
 };
 
 } // namespace simdrng
-#endif // SIMDRNG_WITH_XSIMD

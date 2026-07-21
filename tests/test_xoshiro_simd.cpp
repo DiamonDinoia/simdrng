@@ -91,11 +91,11 @@ TEST_CASE("GENERATE UINT64", "[xoshiro256++]") {
       reference[i].jump();
     }
   }
-  for (auto i = 0; i < SIMD_WIDTH; ++i) {
+  for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
     REQUIRE(rng.getState(i) == reference[i].getState());
   }
   for (auto i = 0; i < tests; i += SIMD_WIDTH) {
-    for (auto j = 0; j < SIMD_WIDTH; ++j) {
+    for (auto j = 0UL; j < SIMD_WIDTH; ++j) {
       INFO("i: " << i << " j: " << j);
       REQUIRE(rng() == reference[j]());
     }
@@ -204,11 +204,11 @@ TEST_CASE("GENERATE DOUBLE", "[xoshiro256++]") {
       reference[i].jump();
     }
   }
-  for (auto i = 0; i < SIMD_WIDTH; ++i) {
+  for (auto i = 0UL; i < SIMD_WIDTH; ++i) {
     REQUIRE(rng.getState(i) == reference[i].getState());
   }
   for (auto i = 0; i < tests; i += SIMD_WIDTH) {
-    for (auto j = 0; j < SIMD_WIDTH; ++j) {
+    for (auto j = 0UL; j < SIMD_WIDTH; ++j) {
       INFO("i: " << i << " j: " << j);
       REQUIRE(rng.uniform() == reference[j].uniform());
     }

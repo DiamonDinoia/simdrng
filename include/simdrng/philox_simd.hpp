@@ -1,7 +1,5 @@
 #pragma once
 
-#if SIMDRNG_WITH_XSIMD
-
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -327,8 +325,8 @@ PhiloxSIMDInitResult<N, W> PhiloxSIMDInitFunctor<N, W, R>::operator()(Arch /*arc
       +[](const void *s) noexcept ->
       typename InitResult::counter_type { return static_cast<const State *>(s)->getRawCounter(); },
       +[](const void *s) noexcept -> typename InitResult::key_type { return static_cast<const State *>(s)->getKey(); },
-      +[](void *s, const typename InitResult::counter_type &ctr, const typename InitResult::key_type &key) noexcept {
-        static_cast<State *>(s)->setState(ctr, key);
+      +[](void *s, const typename InitResult::counter_type &ctr, const typename InitResult::key_type &k) noexcept {
+        static_cast<State *>(s)->setState(ctr, k);
       },
       std::size_t{State::SIMD_WIDTH},
   };
@@ -588,4 +586,3 @@ using Philox2x64Native = PhiloxNative<2, 64, 10>;
 #endif // XSIMD_NO_SUPPORTED_ARCHITECTURE
 
 } // namespace simdrng
-#endif // SIMDRNG_WITH_XSIMD

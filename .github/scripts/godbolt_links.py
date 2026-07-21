@@ -25,18 +25,11 @@ COMPILER_ID = "g142"  # gcc 14.2
 
 DEMOS = [
     {
-        "name": "scalar",
-        "demo": GODBOLT / "demo_scalar.cpp",
-        "header": OUT / "simdrng-scalar.hpp",
-        "options": "-std=c++20 -O3",
-        "libs": [],
-    },
-    {
         "name": "simd",
         "demo": GODBOLT / "demo_simd.cpp",
         "header": OUT / "simdrng.hpp",
-        # AVX2 baseline runs on Compiler Explorer; xsimd "trunk" matches our
-        # upstream-master pin (the version that has mul_hilo).
+        # AVX2 baseline runs on Compiler Explorer; xsimd "trunk" is the closest
+        # version to our 14.3.0 pin (the version that has mul_hilo).
         "options": "-std=c++20 -O3 -march=x86-64-v3",
         "libs": [{"id": "xsimd", "version": "trunk"}],
     },

@@ -12,12 +12,27 @@ Pre-1.0, the public API may change between minor versions.
 
 - xoshiro256: arbitrary and power-of-two jump-ahead. `jump(n)` advances the state
   by exactly `n` calls to the generator (computing `x^n mod P(x)` on the fly via
-  square-and-multiply in GF(2)[x]), addressing any stream offset in `[0, 2^64)`.
+  square-and-multiply in `GF(2)[x]`), addressing any stream offset in `[0, 2^64)`.
   `jump(pow2{e})` advances by `2^e` (via `x^(2^e) mod P(x)`), reaching strides
   beyond `2^64` with the same convention as the fixed jumps — `jump(pow2{128})`
   equals `jump()`. Both are available on `XoshiroScalar`, `XoshiroNative`, the
   dispatched `XoshiroSIMD`, and the Python bindings (`pow2` is exported there).
   The fixed `jump()`/`mid_jump()`/`long_jump()` strides are unchanged.
+
+### Removed
+
+- The scalar-only build mode (`SIMDRNG_WITH_XSIMD=OFF`) and its dependency-free
+  header install. xsimd and poet are now mandatory; the SIMD backends are always
+  built. Consumers who only want a scalar generator can include
+  `simdrng/xoshiro_scalar.hpp` directly.
+- The self-contained scalar single-header (`simdrng-scalar.hpp`); only the
+  SIMD-capable `simdrng.hpp` is published to the `single-header` branch.
+
+### Changed
+
+- poet is now integrated via `add_subdirectory` (its `add_subdirectory` bug is
+  fixed upstream); xsimd is pinned to release `14.3.0` (de-forked to
+  `xtensor-stack/xsimd`).
 
 ## [0.0.1]
 

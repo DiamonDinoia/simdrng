@@ -19,13 +19,13 @@ include_guard(GLOBAL)
 # -------------------------
 include(FetchContent)
 
-set(CPM_DOWNLOAD_VERSION 0.42.0)
+set(CPM_DOWNLOAD_VERSION 0.43.1)
 FetchContent_Declare(
     CPM
     URL
         https://github.com/cpm-cmake/CPM.cmake/releases/download/v${CPM_DOWNLOAD_VERSION}/CPM.cmake
     URL_HASH
-        SHA256=2020b4fc42dba44817983e06342e682ecfc3d2f484a581f11cc5731fbe4dce8a
+        SHA256=1c40fc102ce9625d7de7eb14f541cab30cc3138dca627f0b0ec40293ce6c2934
     DOWNLOAD_NO_EXTRACT TRUE
 )
 FetchContent_GetProperties(CPM)

@@ -52,7 +52,6 @@ TEMPLATE_TEST_CASE("Philox SIMD counter overflow", "[philox]", Pair4x32, Pair2x3
   using Scalar = typename TestType::second_type;
   using word_type = typename Scalar::word_type;
   using counter_type = typename Scalar::counter_type;
-  using key_type = typename Scalar::key_type;
 
   static constexpr auto overflow_tests = 1 << 12;
   auto seed = std::random_device{}();

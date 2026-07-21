@@ -1,9 +1,8 @@
 name: Single Header
 
-# Regenerate the amalgamated single headers on every push to main and force them
-# onto the orphan `single-header` branch. Two variants are published:
-#   simdrng-scalar.hpp  - fully self-contained, scalar only (no xsimd, no poet).
-#   simdrng.hpp         - SIMD-capable; poet inlined, xsimd kept external.
+# Regenerate the amalgamated single header on every push to main and force it
+# onto the orphan `single-header` branch:
+#   simdrng.hpp - SIMD-capable; poet inlined, xsimd kept external.
 on:
   push:
     branches: [ main ]
@@ -47,16 +46,10 @@ jobs:
           echo "XSIMD_INC=$(grep -m1 'xsimd_SOURCE_DIR' build/CMakeCache.txt | cut -d= -f2)/include" >> "$GITHUB_ENV"
           echo "POET_INC=$(grep -m1 'CPM_PACKAGE_poet_SOURCE_DIR' build/CMakeCache.txt | cut -d= -f2)/include" >> "$GITHUB_ENV"
 
-      - name: Generate single headers
+      - name: Generate single header
         run: |
           mkdir -p out
-          python3 tools/amalgamate.py --strip-xsimd --output out/simdrng-scalar.hpp
-          python3 tools/amalgamate.py --extra-root "$POET_INC" --xsimd-default --output out/simdrng.hpp
-
-      - name: Smoke-compile scalar header (self-contained, no -I deps)
-        run: |
-          g++ -std=c++20 -I out .github/single-header/smoke_scalar.cpp -o /tmp/sc
-          /tmp/sc; echo "single-header scalar smoke OK"
+          python3 tools/amalgamate.py --extra-root "$POET_INC" --output out/simdrng.hpp
 
       - name: Smoke-compile SIMD header (xsimd external, poet inlined)
         # -march=x86-64-v3: AVX2 baseline that GitHub runners can execute; the
@@ -73,7 +66,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout --orphan single-header
           git rm -rf --cached . >/dev/null 2>&1 || true
-          cp out/simdrng-scalar.hpp out/simdrng.hpp .
-          git add -f simdrng-scalar.hpp simdrng.hpp
-          git commit -m "Update single-header builds from ${GITHUB_SHA}"
+          cp out/simdrng.hpp .
+          git add -f simdrng.hpp
+          git commit -m "Update single-header build from ${GITHUB_SHA}"
           git push -f origin single-header

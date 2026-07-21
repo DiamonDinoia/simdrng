@@ -3,17 +3,13 @@
 
 find_package(OpenMP QUIET)
 
-# Examples that only use the portable `Xoshiro` umbrella alias build in both
-# scalar-only and SIMD configurations.
-set(SIMDRNG_SCALAR_EXAMPLES basic_xoshiro threaded_openmp)
-
-# Examples that use the SIMD generators directly require the xsimd backend.
-set(SIMDRNG_SIMD_EXAMPLES simd_bulk_fill xoshiro_native philox_counter_based)
-
-set(SIMDRNG_EXAMPLES ${SIMDRNG_SCALAR_EXAMPLES})
-if(SIMDRNG_WITH_XSIMD)
-    list(APPEND SIMDRNG_EXAMPLES ${SIMDRNG_SIMD_EXAMPLES})
-endif()
+set(SIMDRNG_EXAMPLES
+    basic_xoshiro
+    threaded_openmp
+    simd_bulk_fill
+    xoshiro_native
+    philox_counter_based
+)
 
 foreach(example IN LISTS SIMDRNG_EXAMPLES)
     add_executable(${example} ${example}.cpp)

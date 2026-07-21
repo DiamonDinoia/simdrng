@@ -2,12 +2,9 @@ name: Install & Consume
 
 # Verifies that simdrng is installable and consumable from its install tree:
 #   1. configure + build + install simdrng to a prefix (this fetches xsimd/poet);
-#   2. (xsimd builds) install the exact xsimd/poet sources the build used into the
-#      same prefix so find_dependency(xsimd)/find_dependency(poet) resolve;
+#   2. install the exact xsimd/poet sources the build used into the same prefix
+#      so find_dependency(xsimd)/find_dependency(poet) resolve;
 #   3. build .github/consumer (find_package(simdrng) + #include <simdrng/...>).
-#
-# The scalar-only matrix (SIMDRNG_WITH_XSIMD=OFF) skips the dependency installs
-# entirely, proving the header-only install needs neither xsimd nor poet.
 on:
   push:
     branches: [ main ]
@@ -16,12 +13,8 @@ on:
 
 jobs:
   install-consume:
-    name: install & consume (xsimd=${{ matrix.with_xsimd }})
+    name: install & consume
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        with_xsimd: [ "ON", "OFF" ]
     env:
       PREFIX: ${{ github.workspace }}/_prefix
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
@@ -35,7 +28,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-install-${{ matrix.with_xsimd }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          key: cpm-install-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
           restore-keys: cpm-install-
 
       - name: Install build tooling
@@ -46,7 +39,6 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_INSTALL_PREFIX="$PREFIX"
-          -DSIMDRNG_WITH_XSIMD=${{ matrix.with_xsimd }}
           -DSIMDRNG_BUILD_TESTS=OFF
           -DSIMDRNG_BUILD_EXAMPLES=OFF
 
@@ -54,7 +46,6 @@ jobs:
         run: cmake --build build --target install
 
       - name: Install matching xsimd & poet into the prefix
-        if: matrix.with_xsimd == 'ON'
         run: bash .github/scripts/install-deps.sh build "$PREFIX"
 
       - name: Configure, build & run the consumer against the install

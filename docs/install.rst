@@ -12,13 +12,9 @@ Dependencies
 ------------
 
 The SIMD backends use `xsimd <https://github.com/xtensor-stack/xsimd>`_ (pinned to
-upstream ``master``) and `poet <https://github.com/DiamonDinoia/poet>`_ for
+release ``14.3.0``) and `poet <https://github.com/DiamonDinoia/poet>`_ for
 compile-time helpers. Both are fetched automatically at configure time, so no
 manual installation is required.
-
-Building with ``-DSIMDRNG_WITH_XSIMD=OFF`` produces a **dependency-free,
-header-only** library exposing only the scalar generators; in that mode
-``simdrng::Xoshiro`` aliases the scalar implementation.
 
 C++ via CMake presets
 ---------------------
@@ -48,8 +44,7 @@ Then, from a downstream project:
    target_link_libraries(my_target PRIVATE simdrng::simdrng)
 
 The installed package config resolves its dependencies (``xsimd``, ``poet``) via
-``find_dependency`` — but only when built with xsimd. A scalar-only install
-(``-DSIMDRNG_WITH_XSIMD=OFF``) requires no dependencies on the consumer side.
+``find_dependency``.
 
 C++ via FetchContent
 --------------------
@@ -80,14 +75,10 @@ Options
 +----------------------------+---------+------------------------------------------+
 | CMake option               | Default | Purpose                                  |
 +============================+=========+==========================================+
-| ``SIMDRNG_WITH_XSIMD``     | ON      | Build SIMD backends with xsimd           |
-|                            |         | (OFF = scalar-only header library)       |
-+----------------------------+---------+------------------------------------------+
 | ``SIMDRNG_BUILD_TESTS``    | ON      | Build Catch2 tests and benchmarks        |
 |                            |         | (follows ``BUILD_TESTING``)              |
 +----------------------------+---------+------------------------------------------+
 | ``SIMDRNG_BUILD_PYTHON``   | OFF     | Build nanobind Python extension          |
-|                            |         | (requires ``SIMDRNG_WITH_XSIMD``)        |
 +----------------------------+---------+------------------------------------------+
 | ``SIMDRNG_BUILD_EXAMPLES`` | OFF     | Build C++ examples under examples/cpp    |
 +----------------------------+---------+------------------------------------------+

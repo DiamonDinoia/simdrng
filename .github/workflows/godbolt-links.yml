@@ -47,11 +47,10 @@ jobs:
           cmake -S . -B build -G Ninja -DSIMDRNG_BUILD_TESTS=OFF >/dev/null
           echo "POET_INC=$(grep -m1 'CPM_PACKAGE_poet_SOURCE_DIR' build/CMakeCache.txt | cut -d= -f2)/include" >> "$GITHUB_ENV"
 
-      - name: Generate single headers
+      - name: Generate single header
         run: |
           mkdir -p out
-          python3 tools/amalgamate.py --strip-xsimd --output out/simdrng-scalar.hpp
-          python3 tools/amalgamate.py --extra-root "$POET_INC" --xsimd-default --output out/simdrng.hpp
+          python3 tools/amalgamate.py --extra-root "$POET_INC" --output out/simdrng.hpp
 
       - name: Generate shortlinks
         run: python3 .github/scripts/godbolt_links.py

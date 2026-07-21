@@ -6,19 +6,12 @@ Inlines project headers (resolved under include/, plus any --extra-root) reachab
 from the entry header, strips their include guards / `#pragma once`, and preserves
 other system includes (e.g. <xsimd/xsimd.hpp>, <cstdint>) verbatim.
 
-Two variants are produced from the same source tree:
-
-  * SIMD (default): inline poet via --extra-root so the only external dependency
-    is xsimd (kept as <xsimd/...>; provided by the system or the Compiler Explorer
-    xsimd library). Pass --xsimd-default to default SIMDRNG_WITH_XSIMD to 1.
-
-  * scalar (--strip-xsimd): evaluate `#if SIMDRNG_WITH_XSIMD` as 0 and drop those
-    blocks (keeping any #else), and bake `#define SIMDRNG_WITH_XSIMD 0`. The result
-    is fully self-contained: no xsimd, no poet, no project include path.
+poet is inlined via --extra-root so the only external dependency is xsimd (kept as
+<xsimd/...>; provided by the system or the Compiler Explorer xsimd library).
 
 Usage:
   tools/amalgamate.py [--root ROOT] [--input PATH] [--output PATH] [--guard MACRO]
-                      [--extra-root DIR ...] [--strip-xsimd] [--xsimd-default]
+                      [--extra-root DIR ...]
 """
 
 from pathlib import Path
@@ -32,12 +25,6 @@ IFNDEF_RE = re.compile(r"^\s*#\s*ifndef\s+([A-Z0-9_]+)\s*$")
 DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Z0-9_]+)\s*$")
 ENDIF_RE = re.compile(r"^\s*#\s*endif\b")
 PRAGMA_ONCE_RE = re.compile(r"^\s*#\s*pragma\s+once\b")
-
-# Conditional directives, for the minimal preprocessor used by --strip-xsimd.
-XSIMD_IF_RE = re.compile(r"^\s*#\s*if\s+SIMDRNG_WITH_XSIMD\s*$")
-ANY_IF_RE = re.compile(r"^\s*#\s*(?:if|ifdef|ifndef)\b")
-ELSE_RE = re.compile(r"^\s*#\s*else\b")
-ELIF_RE = re.compile(r"^\s*#\s*elif\b")
 
 
 def read_text(path: Path) -> str:
@@ -85,7 +72,7 @@ def resolve_inlinable(name: str, current_file: Path, search_dirs, allowed_roots)
     return None
 
 
-def inline_file(path: Path, processed: set, search_dirs, allowed_roots, strip_xsimd: bool) -> str:
+def inline_file(path: Path, processed: set, search_dirs, allowed_roots) -> str:
     path = path.resolve()
     if str(path) in processed:
         return f"/* Skipped already inlined: {path.name} */\n"
@@ -94,47 +81,7 @@ def inline_file(path: Path, processed: set, search_dirs, allowed_roots, strip_xs
     text = strip_header_guard(read_text(path))
     out = [f"// BEGIN_FILE: {path.name}\n"]
 
-    # Minimal per-file preprocessor for --strip-xsimd: a stack of conditional
-    # frames. 'eval' frames are `#if SIMDRNG_WITH_XSIMD` (value forced to 0);
-    # 'opaque' frames are every other #if/#ifdef/#ifndef (passed through as text
-    # when the surrounding eval frames are active). Conditionals are balanced
-    # within a single file, so a per-file stack is sufficient.
-    stack = []
-
-    def emitting() -> bool:
-        return all(f["active"] for f in stack if f["kind"] == "eval")
-
     for line in text.splitlines():
-        if strip_xsimd:
-            if XSIMD_IF_RE.match(line):
-                parent = emitting()
-                stack.append({"kind": "eval", "active": False, "parent": parent})
-                continue  # SIMDRNG_WITH_XSIMD == 0: the if-branch is dead
-            if ELSE_RE.match(line) and stack and stack[-1]["kind"] == "eval":
-                fr = stack[-1]
-                fr["active"] = fr["parent"]  # take the #else branch
-                continue
-            if ENDIF_RE.match(line) and stack and stack[-1]["kind"] == "eval":
-                stack.pop()
-                continue
-            if ANY_IF_RE.match(line):
-                if emitting():
-                    out.append(line + "\n")
-                stack.append({"kind": "opaque", "active": True})
-                continue
-            if ELSE_RE.match(line) or ELIF_RE.match(line):
-                if emitting():
-                    out.append(line + "\n")
-                continue
-            if ENDIF_RE.match(line):
-                if stack and stack[-1]["kind"] == "opaque":
-                    stack.pop()
-                if emitting():
-                    out.append(line + "\n")
-                continue
-            if not emitting():
-                continue
-
         matched = False
         for regex, kind in ((INCLUDE_Q_RE, "quoted"), (INCLUDE_LT_RE, "angle")):
             m = regex.match(line)
@@ -142,7 +89,7 @@ def inline_file(path: Path, processed: set, search_dirs, allowed_roots, strip_xs
                 inc = resolve_inlinable(m.group(1), path, search_dirs, allowed_roots)
                 if inc:
                     out.append(f"/* Begin inline ({kind}): {inc.name} */\n")
-                    out.append(inline_file(inc, processed, search_dirs, allowed_roots, strip_xsimd))
+                    out.append(inline_file(inc, processed, search_dirs, allowed_roots))
                     out.append(f"/* End inline ({kind}): {inc.name} */\n")
                 else:
                     out.append(line + "\n")  # external header: keep verbatim
@@ -155,43 +102,26 @@ def inline_file(path: Path, processed: set, search_dirs, allowed_roots, strip_xs
     return "".join(out)
 
 
-def make_banner(strip_xsimd: bool) -> str:
-    if strip_xsimd:
-        return (
-            "/* Auto-generated single-header for simdrng (scalar variant).\n"
-            " * Do not edit directly.\n"
-            " *\n"
-            " * Fully self-contained: SIMDRNG_WITH_XSIMD is baked to 0, all SIMD code\n"
-            " * is stripped, and no xsimd/poet/project headers are required.\n"
-            " */\n\n"
-        )
-    return (
-        "/* Auto-generated single-header for simdrng (SIMD variant).\n"
-        " * Do not edit directly.\n"
-        " *\n"
-        " * poet is inlined; xsimd is kept as an external <xsimd/...> include, so\n"
-        " * compile with the xsimd headers available (installed, or the Compiler\n"
-        " * Explorer xsimd library). The *Native generators (XoshiroNative,\n"
-        " * Philox4x64Native, ...) work header-only. The runtime-dispatch types\n"
-        " * (XoshiroSIMD/Philox*SIMD and the default simdrng::Xoshiro alias) need the\n"
-        " * compiled libsimdrng.a and are not available from this header alone.\n"
-        " */\n\n"
-    )
+BANNER = (
+    "/* Auto-generated single-header for simdrng.\n"
+    " * Do not edit directly.\n"
+    " *\n"
+    " * poet is inlined; xsimd is kept as an external <xsimd/...> include, so\n"
+    " * compile with the xsimd headers available (installed, or the Compiler\n"
+    " * Explorer xsimd library). The *Native generators (XoshiroNative,\n"
+    " * Philox4x64Native, ...) work header-only. The runtime-dispatch types\n"
+    " * (XoshiroSIMD/Philox*SIMD and the default simdrng::Xoshiro alias) need the\n"
+    " * compiled libsimdrng.a and are not available from this header alone.\n"
+    " */\n\n"
+)
 
 
-def build_single_header(input_path, output_path, root, guard, extra_roots, strip_xsimd, xsimd_default):
+def build_single_header(input_path, output_path, root, guard, extra_roots):
     search_dirs = [root / "include"] + extra_roots
     allowed_roots = [root] + extra_roots
-    body = inline_file(input_path.resolve(), set(), search_dirs, allowed_roots, strip_xsimd)
+    body = inline_file(input_path.resolve(), set(), search_dirs, allowed_roots)
 
-    default = ""
-    if xsimd_default and not strip_xsimd:
-        default = "#ifndef SIMDRNG_WITH_XSIMD\n#define SIMDRNG_WITH_XSIMD 1\n#endif\n\n"
-
-    content = (
-        f"{make_banner(strip_xsimd)}"
-        f"#ifndef {guard}\n#define {guard}\n\n{default}{body}\n#endif // {guard}\n"
-    )
+    content = f"{BANNER}#ifndef {guard}\n#define {guard}\n\n{body}\n#endif // {guard}\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
     print(f"Wrote {output_path}")
@@ -205,10 +135,6 @@ def main():
     p.add_argument("--guard", default="SIMDRNG_SINGLE_HEADER_HPP")
     p.add_argument("--extra-root", action="append", default=[],
                    help="Additional root to inline <...> includes from (e.g. poet's include dir).")
-    p.add_argument("--strip-xsimd", action="store_true",
-                   help="Produce the scalar variant: evaluate SIMDRNG_WITH_XSIMD as 0 and drop SIMD code.")
-    p.add_argument("--xsimd-default", action="store_true",
-                   help="Default SIMDRNG_WITH_XSIMD to 1 if the consumer did not define it.")
     args = p.parse_args()
 
     root = Path(args.root).resolve()
@@ -222,7 +148,7 @@ def main():
         if not d.exists():
             print(f"--extra-root not found: {d}", file=sys.stderr)
             sys.exit(2)
-    build_single_header(inp, out, root, args.guard, extra_roots, args.strip_xsimd, args.xsimd_default)
+    build_single_header(inp, out, root, args.guard, extra_roots)
 
 
 if __name__ == "__main__":

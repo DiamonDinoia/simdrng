@@ -15,13 +15,6 @@
 #include "simdrng/xoshiro_scalar.hpp"
 #include "simdrng/xoshiro_simd.hpp"
 
-// The Python bindings expose the SIMD generators, so they require a build with
-// xsimd. The build system enforces this (SIMDRNG_BUILD_PYTHON ⇒ SIMDRNG_WITH_XSIMD);
-// this guard documents the contract at the source level.
-#if !SIMDRNG_WITH_XSIMD
-#error "The simdrng Python bindings require SIMDRNG_WITH_XSIMD=1"
-#endif
-
 namespace nb = nanobind;
 using namespace nb::literals;
 
@@ -391,8 +384,7 @@ template <typename Rng, typename Class> void register_jump(Class &cls) {
         .def("long_jump", [](PyBitGenerator<Rng> &self) { self.rng.long_jump(); })
         .def(
             "jump", [](PyBitGenerator<Rng> &self, std::uint64_t n) { self.rng.jump(n); }, "n"_a)
-        .def(
-            "jump", [](PyBitGenerator<Rng> &self, simdrng::pow2 p) { self.rng.jump(p); }, "exp"_a);
+        .def("jump", [](PyBitGenerator<Rng> &self, simdrng::pow2 p) { self.rng.jump(p); }, "exp"_a);
   }
 }
 
@@ -402,8 +394,9 @@ template <typename Rng, typename Class> void register_jump(Class &cls) {
 // Python module
 NB_MODULE(simdrng_ext, m) {
   // Power-of-two jump tag: bg.jump(pow2(128)) advances by 2^128.
-  nb::class_<simdrng::pow2>(m, "pow2").def(nb::init<std::uint64_t>(), "exponent"_a).def_rw("exponent",
-                                                                                          &simdrng::pow2::exponent);
+  nb::class_<simdrng::pow2>(m, "pow2")
+      .def(nb::init<std::uint64_t>(), "exponent"_a)
+      .def_rw("exponent", &simdrng::pow2::exponent);
 
   using PySplitMix = PyBitGenerator<simdrng::SplitMix>;
   auto sm = nb::class_<PySplitMix>(m, "_SplitMix").def(nb::init<uint64_t>(), "seed"_a);

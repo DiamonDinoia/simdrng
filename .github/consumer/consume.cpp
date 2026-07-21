@@ -1,8 +1,6 @@
 // Downstream consumer used by the Install & Consume workflow. Includes simdrng
-// purely from its install tree and links the exported target. Works against both
-// an xsimd build (simdrng::Xoshiro is the runtime-dispatch SIMD engine) and a
-// scalar-only build (it aliases the scalar engine) -- the SIMDRNG_WITH_XSIMD
-// macro is carried by the installed target, so this source needs no #define.
+// purely from its install tree and links the exported target;
+// simdrng::Xoshiro is the runtime-dispatch SIMD engine.
 #include <cstdint>
 #include <cstdio>
 

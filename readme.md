@@ -126,18 +126,13 @@ CMake options:
 
 | Option                    | Default | Purpose                                                               |
 |---------------------------|---------|-----------------------------------------------------------------------|
-| `SIMDRNG_WITH_XSIMD`      | ON      | Build the SIMD backends with xsimd (OFF = scalar-only header library) |
 | `SIMDRNG_BUILD_TESTS`     | ON\*    | Build Catch2 tests and benchmarks (\*follows `BUILD_TESTING`)         |
-| `SIMDRNG_BUILD_PYTHON`    | OFF     | Build the nanobind Python extension (requires `SIMDRNG_WITH_XSIMD`)   |
+| `SIMDRNG_BUILD_PYTHON`    | OFF     | Build the nanobind Python extension                                   |
 | `SIMDRNG_BUILD_EXAMPLES`  | OFF     | Build C++ examples under `examples/cpp`                               |
 | `SIMDRNG_BUILD_DOCS`      | OFF     | Generate Sphinx/Doxygen docs                                          |
 | `SIMDRNG_MARCH_NATIVE`    | OFF     | Compile benchmarks with `-march=native`                               |
 | `SIMDRNG_ENABLE_CODSPEED` | OFF     | Link codspeed-cpp into the bench harness                              |
 | `SIMDRNG_USE_SANITIZERS`  | OFF     | `ON` = ASan+UBSan, `TSAN` = ThreadSanitizer                           |
-
-With `SIMDRNG_WITH_XSIMD=OFF` the library is header-only and depends on nothing —
-only the scalar generators are built and `simdrng::Xoshiro` aliases the scalar
-implementation.
 
 **Consume from another CMake project** — install and `find_package`:
 
@@ -163,18 +158,14 @@ target_link_libraries(my_target PRIVATE simdrng::simdrng)
 
 ### Single header
 
-Two amalgamated headers are published to the
+An amalgamated **`simdrng.hpp`** is published to the
 [`single-header`](https://github.com/DiamonDinoia/simdrng/tree/single-header)
-branch:
-
-- **`simdrng-scalar.hpp`** — fully self-contained, scalar generators only. No
-  xsimd, no poet, no include path needed.
-- **`simdrng.hpp`** — SIMD-capable. poet is inlined; xsimd is kept as an external
-  `<xsimd/...>` include, so compile with the xsimd headers available. The
-  compile-time-arch `*Native` generators (`XoshiroNative`, `Philox4x64Native`, …)
-  work header-only; the runtime-dispatch types (`XoshiroSIMD`, `Philox*SIMD`, and
-  the default `simdrng::Xoshiro` alias) require linking the compiled library and
-  are not available from the single header alone.
+branch. poet is inlined; xsimd is kept as an external `<xsimd/...>` include, so
+compile with the xsimd headers available. The compile-time-arch `*Native`
+generators (`XoshiroNative`, `Philox4x64Native`, …) work header-only; the
+runtime-dispatch types (`XoshiroSIMD`, `Philox*SIMD`, and the default
+`simdrng::Xoshiro` alias) require linking the compiled library and are not
+available from the single header alone.
 
 ### Python
 

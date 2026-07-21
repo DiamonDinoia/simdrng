@@ -1,7 +1,5 @@
 #pragma once
 
-#if SIMDRNG_WITH_XSIMD
-
 #include <type_traits>
 #include <xsimd/xsimd.hpp>
 
@@ -37,5 +35,3 @@ using dispatch_arch_list =
                                           xsimd::arch_list<xsimd::neon64>, xsimd::arch_list<rvv128>>>;
 
 } // namespace simdrng
-
-#endif // SIMDRNG_WITH_XSIMD

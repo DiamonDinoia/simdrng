@@ -114,6 +114,8 @@ endfunction()
 
 simdrng_fetch_reference(https://prng.di.unimi.it/splitmix64.c ${TEST_INCLUDE_DIR}/splitmix64.c)
 simdrng_fetch_reference(https://prng.di.unimi.it/xoshiro256plusplus.c ${TEST_INCLUDE_DIR}/xoshiro256plusplus.c)
+# xoshiro256plusplus.c #includes "f2x.c" (Vigna's F2[x] polynomial-jump reference).
+simdrng_fetch_reference(https://prng.di.unimi.it/f2x.c ${TEST_INCLUDE_DIR}/f2x.c)
 
 # Use Monocypher for ChaCha20 (fetched via CPM)
 cpmaddpackage(
@@ -136,12 +138,12 @@ enable_testing()
 # Scalar tests build with or without xsimd.
 add_executable(testSplitMix splitmix_tests.cpp)
 target_link_libraries(testSplitMix PRIVATE simdrng Catch2::Catch2WithMain)
-target_include_directories(testSplitMix PRIVATE ${TEST_INCLUDE_DIR})
+target_include_directories(testSplitMix SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
 add_test(NAME testSplitMix COMMAND testSplitMix)
 
 add_executable(testXoshiro test_xoshiro.cpp)
 target_link_libraries(testXoshiro PRIVATE simdrng Catch2::Catch2WithMain)
-target_include_directories(testXoshiro PRIVATE ${TEST_INCLUDE_DIR})
+target_include_directories(testXoshiro SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
 add_test(NAME testXoshiro COMMAND testXoshiro)
 
 add_executable(testChaCha test_chacha.cpp)
@@ -182,85 +184,68 @@ foreach(_t IN LISTS SIMDRNG_SCALAR_TEST_TARGETS)
     target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
 endforeach()
 
-# SIMD tests and benchmarks require the xsimd backend.
-if(SIMDRNG_WITH_XSIMD)
-    add_executable(testXoshiroSIMD test_xoshiro_simd.cpp)
-    target_link_libraries(
-        testXoshiroSIMD
-        PRIVATE simdrng Catch2::Catch2WithMain
-    )
-    target_include_directories(testXoshiroSIMD PRIVATE ${TEST_INCLUDE_DIR})
-    target_link_libraries(testXoshiroSIMD PRIVATE xsimd)
-    add_test(NAME testXoshiroSIMD COMMAND testXoshiroSIMD)
+# SIMD tests and benchmarks.
+add_executable(testXoshiroSIMD test_xoshiro_simd.cpp)
+target_link_libraries(testXoshiroSIMD PRIVATE simdrng Catch2::Catch2WithMain)
+target_include_directories(testXoshiroSIMD SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
+target_link_libraries(testXoshiroSIMD PRIVATE xsimd)
+add_test(NAME testXoshiroSIMD COMMAND testXoshiroSIMD)
 
-    add_executable(testChaChaSIMD test_chacha_simd.cpp)
-    target_link_libraries(
-        testChaChaSIMD
-        PRIVATE simdrng xsimd Catch2::Catch2WithMain
-    )
-    target_include_directories(testChaChaSIMD PRIVATE ${TEST_INCLUDE_DIR})
-    add_test(NAME testChaChaSIMD COMMAND testChaChaSIMD)
+add_executable(testChaChaSIMD test_chacha_simd.cpp)
+target_link_libraries(
+    testChaChaSIMD
+    PRIVATE simdrng xsimd Catch2::Catch2WithMain
+)
+target_include_directories(testChaChaSIMD SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
+add_test(NAME testChaChaSIMD COMMAND testChaChaSIMD)
 
-    add_executable(testPhiloxSIMD test_philox_simd.cpp)
-    target_link_libraries(
-        testPhiloxSIMD
-        PRIVATE simdrng xsimd Catch2::Catch2WithMain
-    )
-    target_include_directories(testPhiloxSIMD PRIVATE ${TEST_INCLUDE_DIR})
-    add_test(NAME testPhiloxSIMD COMMAND testPhiloxSIMD)
+add_executable(testPhiloxSIMD test_philox_simd.cpp)
+target_link_libraries(
+    testPhiloxSIMD
+    PRIVATE simdrng xsimd Catch2::Catch2WithMain
+)
+target_include_directories(testPhiloxSIMD SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
+add_test(NAME testPhiloxSIMD COMMAND testPhiloxSIMD)
 
-    add_executable(testBulkAPI test_bulk_api.cpp)
-    target_link_libraries(
-        testBulkAPI
-        PRIVATE simdrng xsimd Catch2::Catch2WithMain
-    )
-    add_test(NAME testBulkAPI COMMAND testBulkAPI)
+add_executable(testBulkAPI test_bulk_api.cpp)
+target_link_libraries(testBulkAPI PRIVATE simdrng xsimd Catch2::Catch2WithMain)
+add_test(NAME testBulkAPI COMMAND testBulkAPI)
 
-    add_executable(benchmarks benchmarks.cpp)
-    target_include_directories(benchmarks PRIVATE ${TEST_INCLUDE_DIR})
-    target_link_libraries(
-        benchmarks
-        PRIVATE simdrng xsimd benchmark::benchmark_main
-    )
-    if(SIMDRNG_ENABLE_CODSPEED)
-        target_compile_definitions(benchmarks PRIVATE SIMDRNG_CODSPEED=1)
-    endif()
-
-    if(SIMDRNG_MARCH_NATIVE)
-        target_compile_options(benchmarks PRIVATE -march=native)
-    endif()
-
-    foreach(
-        _t
-        IN
-        ITEMS
-            testXoshiroSIMD
-            testChaChaSIMD
-            testPhiloxSIMD
-            testBulkAPI
-            benchmarks
-    )
-        simdrng_enable_warnings(${_t})
-    endforeach()
-
-    # Tests link with -fno-lto (see the scalar-test note above); benchmarks keep LTO.
-    foreach(
-        _t
-        IN
-        ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI
-    )
-        target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
-    endforeach()
-
-    # Convenience target to run the benchmarks with hardware counters enabled.
-    add_custom_target(
-        run_benchmarks
-        COMMAND
-            benchmarks
-            --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES
-        DEPENDS benchmarks
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running benchmarks..."
-        VERBATIM
-    )
+add_executable(benchmarks benchmarks.cpp)
+target_include_directories(benchmarks SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
+target_link_libraries(
+    benchmarks
+    PRIVATE simdrng xsimd benchmark::benchmark_main
+)
+if(SIMDRNG_ENABLE_CODSPEED)
+    target_compile_definitions(benchmarks PRIVATE SIMDRNG_CODSPEED=1)
 endif()
+
+if(SIMDRNG_MARCH_NATIVE)
+    target_compile_options(benchmarks PRIVATE -march=native)
+endif()
+
+foreach(
+    _t
+    IN
+    ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI benchmarks
+)
+    simdrng_enable_warnings(${_t})
+endforeach()
+
+# Tests link with -fno-lto (see the scalar-test note above); benchmarks keep LTO.
+foreach(_t IN ITEMS testXoshiroSIMD testChaChaSIMD testPhiloxSIMD testBulkAPI)
+    target_link_options(${_t} PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
+endforeach()
+
+# Convenience target to run the benchmarks with hardware counters enabled.
+add_custom_target(
+    run_benchmarks
+    COMMAND
+        benchmarks
+        --benchmark_perf_counters=CYCLES,INSTRUCTIONS,CACHE-MISSES,BRANCH-MISSES,BRANCHES
+    DEPENDS benchmarks
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running benchmarks..."
+    VERBATIM
+)
