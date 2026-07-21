@@ -31,6 +31,13 @@ option(
     ${BUILD_TESTING}
 )
 option(SIMDRNG_BUILD_PYTHON "Build the nanobind Python bindings" OFF)
+option(
+    SIMDRNG_DISPATCH
+    "Build every SIMD tier and pick the best at runtime (portable binaries to \
+ship). OFF (default) builds a single native tier: fastest for the build host, \
+NOT portable — for local/run-only builds."
+    OFF
+)
 option(SIMDRNG_BUILD_EXAMPLES "Build the C++ examples under examples/cpp" OFF)
 option(SIMDRNG_BUILD_DOCS "Build Sphinx/Doxygen documentation" OFF)
 option(SIMDRNG_MARCH_NATIVE "Build benchmarks with -march=native" OFF)
@@ -178,10 +185,25 @@ target_compile_features(simdrng INTERFACE cxx_std_20)
 
 # ---------------------------------------------------------------------------
 # Architecture-specific SIMD dispatch variants.
-# Each variant is compiled with flags that enable a specific SIMD level;
-# xsimd::dispatch picks the best available at runtime.
+# With SIMDRNG_DISPATCH=ON each variant is compiled in its own TU with flags
+# that enable a specific SIMD level; xsimd::dispatch picks the best available at
+# runtime — portable binaries safe on any CPU down to the baseline (ship path).
+# With SIMDRNG_DISPATCH=OFF (default) a single -mcpu/-march=native TU is built:
+# fastest for the build host but NOT portable (lower-tier templates get native
+# codegen), correct only for local/run-only builds.
 # ---------------------------------------------------------------------------
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+if(NOT SIMDRNG_DISPATCH)
+    set(SIMDRNG_DISPATCH_VARIANTS "native")
+    if(MSVC)
+        set(SIMDRNG_DISPATCH_FLAGS_native /D__SSE2__) # MSVC has no -march=native
+    elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        # Apple clang rejects -march=native and would drop to generic scheduling
+        # + lose FP16/crypto; -mcpu=native gives Apple-pipeline tuning + full ISA.
+        set(SIMDRNG_DISPATCH_FLAGS_native -mcpu=native)
+    else()
+        set(SIMDRNG_DISPATCH_FLAGS_native -march=native)
+    endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(SIMDRNG_DISPATCH_VARIANTS "x86-64;x86-64-v3;x86-64-v4")
     if(MSVC)
         # MSVC has no -march equivalent and doesn't define __SSE2__ even

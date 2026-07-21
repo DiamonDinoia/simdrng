@@ -21,7 +21,7 @@ cmake.build-type = "Release"
 cmake.source-dir = ".."
 build-dir = "build/{wheel_tag}"
 build.targets = ["simdrng_ext"]
-cmake.define = {"SIMDRNG_BUILD_PYTHON" = "ON", "SIMDRNG_BUILD_TESTS" = "OFF"}
+cmake.define = {"SIMDRNG_BUILD_PYTHON" = "ON", "SIMDRNG_BUILD_TESTS" = "OFF", "SIMDRNG_DISPATCH" = "ON"}
 wheel.py-api = "cp312"
 wheel.packages = ["simdrng"]
 wheel.exclude = ["simdrng/tests", "simdrng/examples", "simdrng/benchmarks"]

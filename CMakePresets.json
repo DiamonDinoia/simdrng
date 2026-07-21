@@ -12,38 +12,43 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SIMDRNG_DISPATCH": "ON"
       }
     },
     {
       "name": "release",
-      "displayName": "Release (local dev: tests + examples + -march=native benches)",
+      "displayName": "Release (local dev: single native tier, tests + examples + -march=native benches)",
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SIMDRNG_BUILD_TESTS": "ON",
         "SIMDRNG_BUILD_PYTHON": "OFF",
         "SIMDRNG_MARCH_NATIVE": "ON",
+        "SIMDRNG_DISPATCH": "OFF",
         "SIMDRNG_BUILD_EXAMPLES": "ON"
       }
     },
     {
       "name": "debug",
-      "displayName": "Debug (tests + examples)",
+      "displayName": "Debug (local dev: single native tier, tests + examples)",
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "SIMDRNG_BUILD_TESTS": "ON",
         "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_DISPATCH": "OFF",
         "SIMDRNG_BUILD_EXAMPLES": "ON"
       }
     },
     {
       "name": "python",
-      "displayName": "Python Bindings",
+      "displayName": "Python Bindings (portable wheel: multi-tier dispatch)",
       "inherits": "release",
       "cacheVariables": {
         "SIMDRNG_BUILD_PYTHON": "ON",
+        "SIMDRNG_DISPATCH": "ON",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
         "SIMDRNG_BUILD_EXAMPLES": "OFF"
       }
     },
