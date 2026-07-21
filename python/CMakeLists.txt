@@ -31,7 +31,7 @@ find_package(
     OPTIONAL_COMPONENTS Development.SABIModule
 )
 
-set(NANOBIND_VERSION 2.10.2)
+set(NANOBIND_VERSION 2.13.0)
 
 cpmaddpackage(
     NAME nanobind
@@ -39,7 +39,12 @@ cpmaddpackage(
     VERSION ${NANOBIND_VERSION}
 )
 
-nanobind_add_module(simdrng_ext NB_STATIC STABLE_ABI FREE_THREADED LTO NOMINSIZE simdrng.cpp)
+# No LTO keyword: the extension TU is thin nanobind glue and the SIMD codegen
+# lives in the simdrng static lib (built with IPO + -ffat-lto-objects), so
+# cross-module LTO here buys little — and GCC's LTO streamer ICEs on it under
+# musl (internal compiler error in lto_tag_to_tree_code, the same GCC LTO bug
+# worked around for the test link in the top-level CMakeLists).
+nanobind_add_module(simdrng_ext NB_STATIC STABLE_ABI FREE_THREADED NOMINSIZE simdrng.cpp)
 target_link_libraries(simdrng_ext PRIVATE simdrng Python::NumPy)
 target_compile_options(simdrng_ext PRIVATE ${COMPILE_OPTIONS})
 target_link_options(simdrng_ext PRIVATE ${LINK_OPTIONS})
