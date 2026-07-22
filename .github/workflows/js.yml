@@ -1,0 +1,64 @@
+name: JavaScript
+
+# JS/TS binding: builds the native N-API addon (bindings-js) and the TypeScript
+# layer, then runs the node:test suite (js_simdrng), which exercises whichever
+# backends it finds in dist/. Only the native backend is built here; the WASM
+# backend needs a wasm SIMD tier in the library core (src/*_simd_dispatch.cpp),
+# which is a separate follow-up. Blocking runtime gate for the JS binding.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: js-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  js:
+    name: JavaScript/TypeScript binding (${{ matrix.name }})
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,  runs-on: ubuntu-24.04 }
+          - { name: linux-aarch64, runs-on: ubuntu-24.04-arm }
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # GenerateVersion.cmake reads git history for the -dev.N suffix
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-js-${{ matrix.name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-js-${{ matrix.name }}-
+
+      - name: Install build tooling
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Install npm deps
+        run: npm ci
+        working-directory: bindings/js
+
+      - name: Configure + build the native (.node) backend
+        run: |
+          cmake --preset bindings-js
+          cmake --build build/bindings-js -j --target simdrng_node simdrng_js_ts
+
+      - name: Run JS suite (js_simdrng)
+        run: ctest --test-dir build/bindings-js -R js_simdrng --output-on-failure

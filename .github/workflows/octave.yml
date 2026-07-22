@@ -1,0 +1,63 @@
+name: Octave
+
+# Octave binding: compiles the checked-in mwrap gateway (bindings/matlab/generated/)
+# with mkoctfile and runs the matlab_simdrng CTest target. Octave has no stable
+# MEX ABI, so nothing is prebuilt — always from source. This is the blocking
+# runtime gate for the MATLAB/Octave binding; real MATLAB (matlab.yml) only gates
+# the build since its hosted license is unreliable in CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: octave-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  octave:
+    name: Octave binding (${{ matrix.name }})
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,  runs-on: ubuntu-24.04 }
+          - { name: linux-aarch64, runs-on: ubuntu-24.04-arm }
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # GenerateVersion.cmake reads git history for the -dev.N suffix
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-octave-${{ matrix.name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-octave-${{ matrix.name }}-
+
+      # octave-dev provides octave + mkoctfile + headers; ninja/cmake/g++ are
+      # preinstalled on the runner image.
+      - name: Install Octave + toolchain
+        run: sudo apt-get update && sudo apt-get install -y octave-dev ninja-build
+
+      # bindings-octave sets SIMDRNG_BUILD_MATLAB=ON; with only mkoctfile present
+      # the Octave backend is selected. The mwrap gateway is checked in and
+      # compiled directly — no CPM/mwrap/bison/flex. regen-check (matlab.yml)
+      # guards its freshness.
+      - name: Configure + build the Octave MEX
+        run: |
+          cmake --preset bindings-octave
+          cmake --build build/bindings-octave -j
+
+      # test_simdrng.m calls error()/assert on failure -> octave exits non-zero.
+      - name: Run Octave suite (matlab_simdrng)
+        run: ctest --test-dir build/bindings-octave -R matlab_simdrng --output-on-failure

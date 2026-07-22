@@ -1,0 +1,105 @@
+name: MATLAB
+
+# Real MATLAB (not Octave): setup-matlab puts MATLAB on PATH so FindMatlab picks
+# it up and the MEX compiles — that build is the hard gate here. Actually running
+# the suite needs a license, which MathWorks' hosted licensing does not reliably
+# grant for `matlab -batch`; the run step is therefore best-effort and octave.yml
+# is the blocking runtime gate. The regen-check job keeps the checked-in mwrap
+# gateway in sync with simdrng.mw.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: matlab-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  matlab:
+    name: MATLAB binding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-matlab-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-matlab-
+
+      - name: Install build tooling
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+
+      # bindings-matlab sets SIMDRNG_BUILD_MATLAB=ON; with MATLAB (and no
+      # mkoctfile) present, the MATLAB MEX backend is selected. The mwrap gateway
+      # is checked in and compiled directly — no CPM/mwrap/bison/flex. regen-check
+      # below guards its freshness.
+      - name: Configure + build the MATLAB MEX
+        run: |
+          cmake --preset bindings-matlab
+          cmake --build build/bindings-matlab -j
+
+      # Best-effort: hosted MATLAB licensing is unreliable for `matlab -batch`, so
+      # this does not block CI (the Octave job is the blocking runtime gate). The
+      # build above stays a hard gate.
+      - name: Run MATLAB suite (matlab_simdrng)
+        continue-on-error: true
+        run: ctest --test-dir build/bindings-matlab -R matlab_simdrng --output-on-failure
+
+  # The mwrap gateway (bindings/matlab/generated/) is checked in and compiled by
+  # default. This job keeps it in sync with simdrng.mw: rerun mwrap and fail if
+  # the output differs from what's committed. Fast (no MATLAB) — CMake + the mwrap
+  # generator + a git diff.
+  regen-check:
+    name: mwrap gateway is up to date
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-regen-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-regen-
+
+      # octave-dev gives mkoctfile so the binding's CMakeLists selects a backend
+      # (else it skips and the regen target is never defined); bison/flex/m4 build
+      # the mwrap generator's parser/lexer.
+      - name: Install Octave + mwrap deps
+        run: sudo apt-get update && sudo apt-get install -y octave-dev bison flex m4 ninja-build
+
+      # OFF flips the binding to fetch+build mwrap; simdrng_mw_regen runs it and
+      # writes the fresh output back into bindings/matlab/generated/.
+      - name: Regenerate the gateway from simdrng.mw
+        run: |
+          cmake --preset bindings-octave -DSIMDRNG_MATLAB_USE_PREGENERATED=OFF
+          cmake --build build/bindings-octave --target simdrng_mw_regen
+
+      - name: Fail if generated/ is stale
+        run: |
+          if ! git diff --exit-code -- bindings/matlab/generated/; then
+            echo "::error::bindings/matlab/generated/ is out of date. Configure with" \
+              "-DSIMDRNG_MATLAB_USE_PREGENERATED=OFF, build the simdrng_mw_regen" \
+              "target, and commit the result."
+            exit 1
+          fi

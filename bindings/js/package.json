@@ -1,0 +1,57 @@
+{
+  "name": "@flatironinstitute/simdrng",
+  "version": "0.0.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "SIMD random-number generators — JS/TS binding (native N-API addon + WASM) over the simdrng C ABI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "browser": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/backend.js",
+    "dist/native.js",
+    "dist/wasm.js",
+    "dist/*.d.ts",
+    "dist/simdrng.wasm",
+    "dist/simdrng.mjs",
+    "prebuilds/**/*.node"
+  ],
+  "scripts": {
+    "build:native": "cmake --preset bindings-js && cmake --build build/bindings-js -j --target simdrng_node simdrng_js_ts",
+    "build:wasm": "cmake --preset bindings-js-wasm && cmake --build build/bindings-js-wasm -j --target simdrng_wasm simdrng_js_ts",
+    "build:ts": "tsc",
+    "build": "npm run build:native && npm run build:wasm",
+    "test": "node --test",
+    "format": "prettier --write src test"
+  },
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DiamonDinoia/simdrng.git",
+    "directory": "bindings/js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.0.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,55 @@
+name: Fortran
+
+# Fortran binding: a thin iso_c_binding shim (bindings/fortran/simdrng.f90) over
+# the C ABI. Builds and runs test_simdrng.f90 via the fortran_simdrng CTest
+# target. Blocking runtime gate for the Fortran binding.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: fortran-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fortran:
+    name: Fortran binding (${{ matrix.name }})
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,  runs-on: ubuntu-24.04 }
+          - { name: linux-aarch64, runs-on: ubuntu-24.04-arm }
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # GenerateVersion.cmake reads git history for the -dev.N suffix
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-fortran-${{ matrix.name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-fortran-${{ matrix.name }}-
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y gfortran ninja-build
+
+      - name: Configure + build
+        run: |
+          cmake --preset bindings-fortran
+          cmake --build build/bindings-fortran -j
+
+      # test_simdrng.f90 ends with `error stop <count>` on any failure -> nonzero exit.
+      - name: Run Fortran test (fortran_simdrng)
+        run: ctest --test-dir build/bindings-fortran -R fortran_simdrng --output-on-failure

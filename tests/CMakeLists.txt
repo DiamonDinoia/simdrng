@@ -211,6 +211,19 @@ add_executable(testBulkAPI test_bulk_api.cpp)
 target_link_libraries(testBulkAPI PRIVATE simdrng xsimd Catch2::Catch2WithMain)
 add_test(NAME testBulkAPI COMMAND testBulkAPI)
 
+# C ABI test — drives include/simdrng/capi.h through the self-contained static
+# lib (the surface every non-Python binding links). Only when the C API is built.
+if(TARGET simdrng_c_static)
+    add_executable(testCApi test_capi.cpp)
+    target_link_libraries(
+        testCApi
+        PRIVATE simdrng::simdrng_c_static Catch2::Catch2WithMain
+    )
+    simdrng_enable_warnings(testCApi)
+    target_link_options(testCApi PRIVATE $<$<CXX_COMPILER_ID:GNU>:-fno-lto>)
+    add_test(NAME testCApi COMMAND testCApi)
+endif()
+
 add_executable(benchmarks benchmarks.cpp)
 target_include_directories(benchmarks SYSTEM PRIVATE ${TEST_INCLUDE_DIR})
 target_link_libraries(

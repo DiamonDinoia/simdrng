@@ -14,8 +14,10 @@ string(STRIP "${SIMDRNG_VERSION_BASE}" SIMDRNG_VERSION_BASE)
 
 project(simdrng VERSION ${SIMDRNG_VERSION_BASE} LANGUAGES CXX)
 
-# if no build type was specified, default to Release
-if(NOT CMAKE_BUILD_TYPE)
+# if no build type was specified, default to Release — but only as the top-level
+# project. When FetchContent'd/add_subdirectory'd, forcing the parent's build
+# type would be pollution.
+if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE)
     message(STATUS "Setting build type to 'Release' as none was specified.")
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
 endif()
@@ -23,12 +25,26 @@ endif()
 # ---------------------------------------------------------------------------
 # Options (all SIMDRNG_*-prefixed).
 # ---------------------------------------------------------------------------
-include(CTest) # defines BUILD_TESTING (default ON)
+# CTest injects dashboard targets (Nightly/Continuous/…) and defines
+# BUILD_TESTING into whatever project includes it — keep it to the top level.
+if(PROJECT_IS_TOP_LEVEL)
+    include(CTest) # defines BUILD_TESTING (default ON)
+endif()
 
 option(
     SIMDRNG_BUILD_TESTS
     "Build the Catch2 test suite and benchmarks"
-    ${BUILD_TESTING}
+    ${PROJECT_IS_TOP_LEVEL}
+)
+option(
+    SIMDRNG_INSTALL
+    "Generate the install/export rules for simdrng"
+    ${PROJECT_IS_TOP_LEVEL}
+)
+option(
+    SIMDRNG_BUILD_C_API
+    "Build the C ABI (shared + static) that language bindings link against"
+    ${PROJECT_IS_TOP_LEVEL}
 )
 option(SIMDRNG_BUILD_PYTHON "Build the nanobind Python bindings" OFF)
 option(
@@ -39,6 +55,14 @@ aliases XoshiroNative (xsimd::best_arch): fastest for the build host, NOT \
 portable — for local/run-only builds."
     OFF
 )
+option(SIMDRNG_BUILD_MATLAB "Build the mwrap MATLAB/Octave binding" OFF)
+option(SIMDRNG_BUILD_FORTRAN "Build the iso_c_binding Fortran binding" OFF)
+option(
+    SIMDRNG_BUILD_JULIA
+    "Register the Julia binding's ctest (needs julia)"
+    OFF
+)
+option(SIMDRNG_BUILD_JS "Build the JS/TS binding (N-API addon or WASM)" OFF)
 option(SIMDRNG_BUILD_EXAMPLES "Build the C++ examples under examples/cpp" OFF)
 option(SIMDRNG_BUILD_DOCS "Build Sphinx/Doxygen documentation" OFF)
 option(SIMDRNG_MARCH_NATIVE "Build benchmarks with -march=native" OFF)
@@ -54,14 +78,19 @@ option(
 )
 
 # ---------------------------------------------------------------------------
-# Version header (committed; regenerated here and by the pre-commit hook).
+# Version header. version.hpp is committed and also refreshed by the pre-commit
+# hook, so consumers get a valid header from the checkout. Only regenerate it
+# into the source tree as the top-level project — a FetchContent consumer must
+# not have its fetched source dirtied on every configure.
 # ---------------------------------------------------------------------------
-include(cmake/GenerateVersion.cmake)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp"
-    @ONLY
-)
+if(PROJECT_IS_TOP_LEVEL)
+    include(cmake/GenerateVersion.cmake)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp.in"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/simdrng/version.hpp"
+        @ONLY
+    )
+endif()
 
 # ---------------------------------------------------------------------------
 # Developer helpers / CPM bootstrap (needed to fetch xsimd/poet).
@@ -79,29 +108,35 @@ set(POET_DOWNLOAD_VERSION d5a86a2de13cbe2283bb6c51e4dc2f5170196278) # DiamonDino
 
 # SYSTEM YES marks the fetched headers as system includes (-isystem) so their
 # warnings (e.g. xsimd's -Wpedantic __int128) don't surface in our build.
-cpmaddpackage(
-        NAME xsimd
-        GITHUB_REPOSITORY xtensor-stack/xsimd
-        GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
-        GIT_SHALLOW NO
-        GIT_PROGRESS YES
-        EXCLUDE_FROM_ALL YES
-        SYSTEM YES
-)
+# Guard on the target so a parent project that already provides xsimd/poet
+# (by any means, not just CPM) wins instead of clashing with our fetch.
+if(NOT TARGET xsimd)
+    cpmaddpackage(
+            NAME xsimd
+            GITHUB_REPOSITORY xtensor-stack/xsimd
+            GIT_TAG ${XSIMD_DOWNLOAD_VERSION}
+            GIT_SHALLOW NO
+            GIT_PROGRESS YES
+            EXCLUDE_FROM_ALL YES
+            SYSTEM YES
+    )
+endif()
 
 # poet defines the poet::poet INTERFACE target itself; add_subdirectory it
 # and disable its tests/benchmarks/examples so we only pull the headers.
-cpmaddpackage(
-        NAME poet
-        GITHUB_REPOSITORY DiamonDinoia/poet
-        GIT_TAG ${POET_DOWNLOAD_VERSION}
-        GIT_SHALLOW NO
-        GIT_PROGRESS YES
-        EXCLUDE_FROM_ALL YES
-        SYSTEM YES
-        OPTIONS "POET_BUILD_TESTS OFF" "POET_BUILD_BENCHMARKS OFF"
-                "POET_BUILD_EXAMPLES OFF" "POET_BUILD_DEVEL OFF"
-)
+if(NOT TARGET poet::poet)
+    cpmaddpackage(
+            NAME poet
+            GITHUB_REPOSITORY DiamonDinoia/poet
+            GIT_TAG ${POET_DOWNLOAD_VERSION}
+            GIT_SHALLOW NO
+            GIT_PROGRESS YES
+            EXCLUDE_FROM_ALL YES
+            SYSTEM YES
+            OPTIONS "POET_BUILD_TESTS OFF" "POET_BUILD_BENCHMARKS OFF"
+                    "POET_BUILD_EXAMPLES OFF" "POET_BUILD_DEVEL OFF"
+    )
+endif()
 
 include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
@@ -280,6 +315,62 @@ foreach(SIMDRNG_TYPE IN ITEMS xoshiro chacha philox)
     endforeach()
 endforeach()
 
+# ---------------------------------------------------------------------------
+# C ABI. A thin extern-"C" wrapper (src/capi.cpp) over the simdrng static lib,
+# shipped as both a shared library (simdrng_c — for dlopen/Julia/Fortran) and a
+# static archive (simdrng_c_static — for self-contained MEX/N-API bundles).
+# Both come from one OBJECT library so the glue is compiled once. Compiled at
+# baseline arch: it only calls the runtime-dispatched public API, whose per-ISA
+# code already lives in the simdrng archive.
+# ---------------------------------------------------------------------------
+if(SIMDRNG_BUILD_C_API)
+    add_library(simdrng_c_objects OBJECT src/capi.cpp)
+    target_link_libraries(simdrng_c_objects PRIVATE simdrng) # usage requirements
+    target_compile_definitions(simdrng_c_objects PRIVATE SIMDRNG_C_BUILD)
+    target_compile_features(
+        simdrng_c_objects
+        PRIVATE cxx_std_${SUPPORTED_CXX_STANDARD}
+    )
+    set_target_properties(
+        simdrng_c_objects
+        PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            C_VISIBILITY_PRESET hidden
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
+            # capi.cpp uses no C++20 modules. Disable scanning so CMake doesn't
+            # put an @...modmap flag in compile_commands.json for a build-time
+            # file that clang-tidy (run without building this target) can't find.
+            CXX_SCAN_FOR_MODULES OFF
+    )
+
+    add_library(simdrng_c SHARED $<TARGET_OBJECTS:simdrng_c_objects>)
+    add_library(simdrng::simdrng_c ALIAS simdrng_c)
+    target_link_libraries(simdrng_c PRIVATE simdrng)
+    target_include_directories(
+        simdrng_c
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    set_target_properties(
+        simdrng_c
+        PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}
+    )
+
+    add_library(simdrng_c_static STATIC $<TARGET_OBJECTS:simdrng_c_objects>)
+    add_library(simdrng::simdrng_c_static ALIAS simdrng_c_static)
+    target_link_libraries(simdrng_c_static PRIVATE simdrng)
+    target_include_directories(
+        simdrng_c_static
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    # Consumers of the static lib see a plain (non-dllimport) header.
+    target_compile_definitions(simdrng_c_static INTERFACE SIMDRNG_STATIC)
+endif()
+
 if(SIMDRNG_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -300,42 +391,112 @@ if(SIMDRNG_BUILD_PYTHON)
     add_subdirectory(python)
 endif()
 
+# MATLAB/Octave binding links simdrng_c_static, so it needs the C ABI.
+if(SIMDRNG_BUILD_MATLAB)
+    if(NOT SIMDRNG_BUILD_C_API)
+        message(
+            FATAL_ERROR
+            "SIMDRNG_BUILD_MATLAB requires SIMDRNG_BUILD_C_API (the binding links simdrng_c_static)."
+        )
+    endif()
+    if(NOT SIMDRNG_BUILD_TESTS)
+        enable_testing()
+    endif()
+    add_subdirectory(bindings/matlab)
+endif()
+
+# Fortran binding links simdrng_c_static, so it needs the C ABI.
+if(SIMDRNG_BUILD_FORTRAN)
+    if(NOT SIMDRNG_BUILD_C_API)
+        message(
+            FATAL_ERROR
+            "SIMDRNG_BUILD_FORTRAN requires SIMDRNG_BUILD_C_API (the binding links simdrng_c_static)."
+        )
+    endif()
+    if(NOT SIMDRNG_BUILD_TESTS)
+        enable_testing()
+    endif()
+    add_subdirectory(bindings/fortran)
+endif()
+
+# Julia binding dlopen()s the shared simdrng_c at test time, so it needs the C API.
+if(SIMDRNG_BUILD_JULIA)
+    if(NOT SIMDRNG_BUILD_C_API)
+        message(
+            FATAL_ERROR
+            "SIMDRNG_BUILD_JULIA requires SIMDRNG_BUILD_C_API (the package dlopen()s simdrng_c)."
+        )
+    endif()
+    if(NOT SIMDRNG_BUILD_TESTS)
+        enable_testing()
+    endif()
+    add_subdirectory(bindings/julia)
+endif()
+
+# JS binding links simdrng_c_static (native addon) / exports its symbols (WASM).
+if(SIMDRNG_BUILD_JS)
+    if(NOT SIMDRNG_BUILD_C_API)
+        message(
+            FATAL_ERROR
+            "SIMDRNG_BUILD_JS requires SIMDRNG_BUILD_C_API (the binding links simdrng_c_static)."
+        )
+    endif()
+    if(NOT SIMDRNG_BUILD_TESTS)
+        enable_testing()
+    endif()
+    add_subdirectory(bindings/js)
+endif()
+
 # ---------------------------------------------------------------------------
-# Installation (always available, independent of Python).
+# Installation. Gated on SIMDRNG_INSTALL (default: top-level only) so a
+# FetchContent consumer's `cmake --install` doesn't also install simdrng's
+# headers and package config.
 # ---------------------------------------------------------------------------
-install(
-    TARGETS simdrng
-    EXPORT simdrngTargets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
+if(SIMDRNG_INSTALL)
+    set(SIMDRNG_INSTALL_TARGETS simdrng)
+    if(SIMDRNG_BUILD_C_API)
+        list(APPEND SIMDRNG_INSTALL_TARGETS simdrng_c simdrng_c_static)
+    endif()
+    install(
+        TARGETS ${SIMDRNG_INSTALL_TARGETS}
+        EXPORT simdrngTargets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+    )
 
-install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
+    install(
+        DIRECTORY include/
+        DESTINATION include
+        FILES_MATCHING
+        PATTERN "*.hpp"
+        PATTERN "*.h"
+    )
 
-install(
-    EXPORT simdrngTargets
-    FILE simdrngTargets.cmake
-    NAMESPACE simdrng::
-    DESTINATION lib/cmake/simdrng
-)
+    install(
+        EXPORT simdrngTargets
+        FILE simdrngTargets.cmake
+        NAMESPACE simdrng::
+        DESTINATION lib/cmake/simdrng
+    )
 
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY AnyNewerVersion
-)
-
-configure_file(
-    cmake/simdrngConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
-    @ONLY
-)
-
-install(
-    FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfigVersion.cmake"
-    DESTINATION lib/cmake/simdrng
-)
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY AnyNewerVersion
+    )
+
+    configure_file(
+        cmake/simdrngConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
+        @ONLY
+    )
+
+    install(
+        FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfig.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/simdrngConfigVersion.cmake"
+        DESTINATION lib/cmake/simdrng
+    )
+endif()

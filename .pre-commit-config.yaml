@@ -1,7 +1,9 @@
 # Generated / amalgamated artifacts are never hand-formatted:
 #   include/simdrng/version.hpp  - generated from version.hpp.in
 #   single-header/*.hpp          - amalgamated outputs (when present locally)
-exclude: '\.svg$|\.drawio$|^include/simdrng/version\.hpp$|^single-header/'
+#   bindings/matlab/generated/    - mwrap output; formatting it drifts from the
+#                                   regenerated gateway and breaks regen-check.
+exclude: '\.svg$|\.drawio$|^include/simdrng/version\.hpp$|^single-header/|^bindings/matlab/generated/'
 
 repos:
   # --- C / C++: staged hunks only via git-clang-format ---
@@ -19,6 +21,9 @@ repos:
         require_serial: true
         types_or: [c++, c]
         files: \.(c|cc|cpp|h|hpp)$
+        # The mwrap gateway (generated/) and the .mw's embedded C are never
+        # hand-formatted; the octave_compat shim is trivial. Skip the whole dir.
+        exclude: '^bindings/matlab/'
       - id: gersemi-staged
         name: gersemi (staged hunks)
         entry: python tools/gersemi-staged.py

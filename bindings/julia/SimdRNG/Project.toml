@@ -1,0 +1,10 @@
+name = "SimdRNG"
+uuid = "c1f2a3b4-5d6e-4f70-9a1b-2c3d4e5f6071"
+version = "0.0.1"
+
+[deps]
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+julia = "1.9"

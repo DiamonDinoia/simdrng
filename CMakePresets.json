@@ -167,6 +167,72 @@
         "SIMDRNG_BUILD_PYTHON": "OFF",
         "SIMDRNG_MARCH_NATIVE": "OFF"
       }
+    },
+    {
+      "name": "bindings-octave",
+      "displayName": "MATLAB/Octave binding (Octave backend)",
+      "description": "Builds the C ABI + mwrap MATLAB/Octave binding. With only mkoctfile present the Octave backend is selected; the checked-in gateway is compiled unless SIMDRNG_MATLAB_USE_PREGENERATED=OFF.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
+        "SIMDRNG_BUILD_C_API": "ON",
+        "SIMDRNG_BUILD_MATLAB": "ON"
+      }
+    },
+    {
+      "name": "bindings-matlab",
+      "displayName": "MATLAB/Octave binding (MATLAB backend)",
+      "description": "Same as bindings-octave; with MATLAB on PATH the MATLAB MEX backend is selected by FindMatlab.",
+      "inherits": "bindings-octave"
+    },
+    {
+      "name": "bindings-fortran",
+      "displayName": "Fortran binding (iso_c_binding)",
+      "description": "Builds the C ABI + the Fortran iso_c_binding shim and its self-checking test.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
+        "SIMDRNG_BUILD_C_API": "ON",
+        "SIMDRNG_BUILD_FORTRAN": "ON"
+      }
+    },
+    {
+      "name": "bindings-julia",
+      "displayName": "Julia binding",
+      "description": "Builds the C ABI shared library and registers the Julia package's ctest (needs julia on PATH).",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
+        "SIMDRNG_BUILD_C_API": "ON",
+        "SIMDRNG_BUILD_JULIA": "ON"
+      }
+    },
+    {
+      "name": "bindings-js",
+      "displayName": "JS/TS binding (native N-API addon)",
+      "description": "Builds the native Node-API .node addon (links simdrng_c_static) plus the TypeScript layer, and registers the node:test suite. Run 'npm install' in bindings/js first so node-addon-api headers and tsc are present.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
+        "SIMDRNG_BUILD_C_API": "ON",
+        "SIMDRNG_BUILD_JS": "ON"
+      }
     }
   ],
   "buildPresets": [
