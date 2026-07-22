@@ -77,6 +77,18 @@ option(
     OFF
 )
 
+# The C ABI (capi.cpp) wraps the runtime-dispatched SIMD types directly
+# (XoshiroSIMD, ChaChaSIMD, PhiloxSIMD), whose per-ISA symbols only exist when
+# the dispatch tiers are built — and a shipped C ABI must be CPU-portable
+# anyway. So building it forces dispatch on regardless of the default.
+if(SIMDRNG_BUILD_C_API AND NOT SIMDRNG_DISPATCH)
+    message(
+        STATUS
+        "simdrng: SIMDRNG_BUILD_C_API requires runtime dispatch — enabling SIMDRNG_DISPATCH."
+    )
+    set(SIMDRNG_DISPATCH ON)
+endif()
+
 # ---------------------------------------------------------------------------
 # Version header. version.hpp is committed and also refreshed by the pre-commit
 # hook, so consumers get a valid header from the checkout. Only regenerate it

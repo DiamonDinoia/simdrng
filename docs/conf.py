@@ -95,6 +95,9 @@ def _run_doxygen_if_needed() -> None:
     doxy.write_text(
         "PROJECT_NAME=simdrng\n"
         f"INPUT={_here.parent / 'include'}\n"
+        # capi.h is the C ABI; exhale can't place its C-linkage decls in the
+        # C++ domain (fatal under -W). Keep it out, as in docs/Doxyfile.in.
+        f"EXCLUDE={_here.parent / 'include' / 'simdrng' / 'capi.h'}\n"
         "RECURSIVE=YES\n"
         "FILE_PATTERNS=*.hpp *.h\n"
         "GENERATE_HTML=NO\n"
