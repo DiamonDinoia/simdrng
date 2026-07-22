@@ -233,6 +233,20 @@
         "SIMDRNG_BUILD_C_API": "ON",
         "SIMDRNG_BUILD_JS": "ON"
       }
+    },
+    {
+      "name": "c-api",
+      "displayName": "C ABI (shared + static, no bindings)",
+      "description": "Builds just the C ABI (simdrng_c / simdrng_c_static) with runtime dispatch — the portable library the language bindings and downstream consumers link against.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SIMDRNG_BUILD_TESTS": "OFF",
+        "SIMDRNG_BUILD_EXAMPLES": "OFF",
+        "SIMDRNG_BUILD_PYTHON": "OFF",
+        "SIMDRNG_MARCH_NATIVE": "OFF",
+        "SIMDRNG_BUILD_C_API": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -247,7 +261,8 @@
     { "name": "tsan", "configurePreset": "tsan" },
     { "name": "valgrind", "configurePreset": "valgrind" },
     { "name": "static-analysis", "configurePreset": "static-analysis", "targets": ["simdrng"] },
-    { "name": "coverage", "configurePreset": "coverage" }
+    { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "c-api", "configurePreset": "c-api", "targets": ["simdrng_c", "simdrng_c_static"] }
   ],
   "testPresets": [
     {

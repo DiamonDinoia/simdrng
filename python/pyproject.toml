@@ -21,7 +21,9 @@ cmake.build-type = "Release"
 cmake.source-dir = ".."
 build-dir = "build/{wheel_tag}"
 build.targets = ["simdrng_ext"]
-cmake.define = {"SIMDRNG_BUILD_PYTHON" = "ON", "SIMDRNG_BUILD_TESTS" = "OFF", "SIMDRNG_DISPATCH" = "ON"}
+# C_API off: the wheel ships only the nanobind extension, and its install rules
+# would otherwise try to install libsimdrng_c that build.targets never builds.
+cmake.define = {"SIMDRNG_BUILD_PYTHON" = "ON", "SIMDRNG_BUILD_TESTS" = "OFF", "SIMDRNG_DISPATCH" = "ON", "SIMDRNG_BUILD_C_API" = "OFF"}
 wheel.py-api = "cp312"
 wheel.packages = ["simdrng"]
 wheel.exclude = ["simdrng/tests", "simdrng/examples", "simdrng/benchmarks"]
