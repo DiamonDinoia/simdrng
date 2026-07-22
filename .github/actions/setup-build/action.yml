@@ -37,6 +37,11 @@ runs:
         {
           echo "CPM_SOURCE_CACHE=${{ github.workspace }}/.cpm-cache"
           echo "SCCACHE_GHA_ENABLED=true"
+          # testBulkAPI is a single ~11-min MSVC TU (it instantiates the dispatch
+          # tiers). With the default 600s idle timeout the daemon exits mid-compile
+          # — no new request resets the timer — dropping the connection (os 10054).
+          # 0 = never idle-exit.
+          echo "SCCACHE_IDLE_TIMEOUT=0"
           echo "CMAKE_C_COMPILER_LAUNCHER=sccache"
           echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
         } >> "$GITHUB_ENV"
